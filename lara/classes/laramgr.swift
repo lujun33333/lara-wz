@@ -91,6 +91,7 @@ final class laramgr: ObservableObject {
     @Published var showrespring: Bool = false
     
     @Published var showLogs: Bool = false
+    @Published var showWZControlPanel: Bool = false
     
     var sbProc: RemoteCall?
     lazy var ytProc = RemoteCall(process: "youtube", useMigFilterBypass: false)
@@ -104,6 +105,9 @@ final class laramgr: ObservableObject {
     @Published var wzGameHUDEnabled: Bool = false
     @Published var wzGameHUDActive: Bool = false
     @Published var wzGameHUDStatus: String = "未启动"
+    @Published var wzMeasuredFPS: Double = 0
+    @Published var wzChainDiagnostic: String = "等待采集"
+    @Published var wzWriteGateReason: String = "当前王者配置仅验证了只读采集链"
     @Published var wzGameHUDPosition: Int = {
         let value = UserDefaults.standard.object(forKey: "wzGameHUDPosition") as? Int ?? 1
         return min(max(value, 0), 3)
@@ -133,11 +137,15 @@ final class laramgr: ObservableObject {
     @Published var wzBoxWidth: Double = 1.5
     @Published var wzAvatarScale: Double = 1.0
     @Published var wzMonsterTextSize: Double = 13
+    @Published var wzSkillX: Double = 0
+    @Published var wzSkillY: Double = 0
     @Published var wzExposedLineRGBA: UInt32 = 0xEF525BFF
     @Published var wzExposedHealthRGBA: UInt32 = 0x52DA84FF
     @Published var wzDefaultLineRGBA: UInt32 = 0xF1B942FF
     @Published var wzDefaultHealthRGBA: UInt32 = 0x52DA84FF
     private var wzGameHUDSessionArmed: Bool = false
+    private var wzFPSWindowStart = Date()
+    private var wzFPSFrameCount: Int = 0
     private var audioEngine: AVAudioEngine?
     private var audioPlayer: AVAudioPlayerNode?
     
@@ -324,8 +332,37 @@ final class laramgr: ObservableObject {
             wz_find_image_base(uuid.baseAddress, 6)
         }
     }
+    private func wzCollectorPagesReadable(_ unityBase: UInt64) -> Bool {
+        // These are page-readability probes, not value assertions: the slots
+        // may legitimately contain zero before a match begins, but the pages
+        // themselves must be readable by the selected external transport.
+        let requiredRVAs: [(String, UInt64)] = [
+            ("matrix", 0x12CA9580),
+            ("actor", 0x1325A6C0)
+        ]
+        var readable = 0
+        for (name, rva) in requiredRVAs {
+            var slot: UInt64 = 0
+            let count = withUnsafeMutableBytes(of: &slot) { bytes in
+                wz_read(unityBase + rva, bytes.baseAddress, bytes.count)
+            }
+            if count == MemoryLayout<UInt64>.size {
+                readable += 1
+            } else {
+                logmsg("(wz.profile) \(name) page unreadable addr=0x\(String(unityBase + rva, radix: 16)) transport=\(String(cString: wz_transport_name())) completed=\(count)")
+            }
+        }
+        return readable == requiredRVAs.count
+    }
     func initializeWZEnvironment() {
         prepareWZEnvironment(connectWhenReady: false)
+    }
+    func openWZControlPanel() {
+        if dsready && hasOffsets {
+            showWZControlPanel = true
+        } else {
+            initializeWZEnvironment()
+        }
     }
     func prepareWZEnvironment(connectWhenReady: Bool = true) {
         guard !dsrunning, !wzRunning, !wzAttached else { return }
@@ -361,6 +398,7 @@ final class laramgr: ObservableObject {
                         } else {
                             self.wzStatus = "内核环境已就绪，可以启动游戏"
                             self.logmsg("(wz) 内核环境和偏移已就绪")
+                            self.showWZControlPanel = true
                         }
                     } else {
                         self.wzStatus = "内核偏移获取失败"
@@ -374,6 +412,7 @@ final class laramgr: ObservableObject {
             wzAttach()
         } else {
             wzStatus = "内核环境已就绪，可以启动游戏"
+            showWZControlPanel = true
         }
     }
     func launchWZGame() {
@@ -428,7 +467,9 @@ final class laramgr: ObservableObject {
             // 未经该版本验证的王者写偏移不得因 mapped-pages 可写而解锁。
             let canWrite = false
             let transportName = transportReady ? String(cString: wz_transport_name()) : "none"
-            let valid = transportReady && base != 0 && self.wzCheckImage(base)
+            let imageValid = transportReady && base != 0 && self.wzCheckImage(base)
+            let profileReadable = imageValid && self.wzCollectorPagesReadable(base)
+            let valid = imageValid && profileReadable
             let pid = wz_connected_pid()
             if valid {
                 wzesp_reset()
@@ -463,7 +504,7 @@ final class laramgr: ObservableObject {
                     "none".withCString {
                         wzhud_set_transport_state(false, false, $0)
                     }
-                    self.logmsg("连接失败：smoba/UnityFramework 不可读或 UUID 不匹配")
+                    self.logmsg("连接失败：smoba/UnityFramework、UUID 或王者采集数据页不可读")
                 }
             }
         }
@@ -502,12 +543,16 @@ final class laramgr: ObservableObject {
             self.wzLastHUDText = ""
             self.wzLastHUDControlFlags = UInt32.max
             self.wzLastConfigFingerprint = UInt64.max
+            self.wzFPSWindowStart = Date()
+            self.wzFPSFrameCount = 0
             DispatchQueue.main.async {
                 self.wzAttached = false
                 self.wzBase = 0
                 self.wzTransportName = "none"
                 self.wzTransportCapabilities = 0
                 self.wzCanWrite = false
+                self.wzMeasuredFPS = 0
+                self.wzChainDiagnostic = "已断开"
                 self.resetWZFeatureState()
                 self.wzRunning = false
                 self.wzStatus = "已断开"
@@ -607,6 +652,8 @@ final class laramgr: ObservableObject {
         config.boxWidth = Float(min(max(wzBoxWidth, 0.5), 6))
         config.avatarScale = Float(min(max(wzAvatarScale, 0.5), 2))
         config.monsterTextSize = Float(min(max(wzMonsterTextSize, 9), 28))
+        config.skillX = Float(min(max(wzSkillX, -300), 300))
+        config.skillY = Float(min(max(wzSkillY, -40), 260))
         config.exposedLineRGBA = wzExposedLineRGBA
         config.exposedHealthRGBA = wzExposedHealthRGBA
         config.defaultLineRGBA = wzDefaultLineRGBA
@@ -659,6 +706,14 @@ final class laramgr: ObservableObject {
         }
         syncWZPresentation()
     }
+    func requestWZWriteFeature(_ title: String) {
+        let backend = wzAttached ? wzTransportName : "未连接"
+        wzWriteGateReason = wzAttached
+            ? "\(title)需要经过版本验证的写入配置；当前 \(backend) 会话保持只读锁定"
+            : "请先连接王者进程；未连接状态不会启用\(title)"
+        wzStatus = wzWriteGateReason
+        logmsg("(wz.write-gate) refused feature=\(title) transport=\(backend) profileWrite=disabled")
+    }
     private func applyGameHUDPresentation() {
         wzhud_set_presentation(
             Int32(wzGameHUDPosition),
@@ -710,6 +765,14 @@ final class laramgr: ObservableObject {
         wzLastHUDControlFlags = config.flags
 
         wzTickNumber &+= 1
+        wzFPSFrameCount += 1
+        let fpsElapsed = Date().timeIntervalSince(wzFPSWindowStart)
+        var sampledFPS: Double?
+        if fpsElapsed >= 1.0 {
+            sampledFPS = Double(wzFPSFrameCount) / fpsElapsed
+            wzFPSFrameCount = 0
+            wzFPSWindowStart = Date()
+        }
         var items = [wzesp_item_t](repeating: wzesp_item_t(), count: 256)
         let width = UInt32(max(request.3.width, request.3.height))
         let height = UInt32(max(1, min(request.3.width, request.3.height)))
@@ -757,8 +820,9 @@ final class laramgr: ObservableObject {
             }
         }
 
+        let diagnostic = wzChainDescription(stats)
         let text = drawEnabled
-            ? "frame=\(wzTickNumber) entities=\(stats.entityCount) items=\(itemCount) readFail=\(stats.readFailures) chain=0x\(String(stats.chainFailureMask, radix: 16)) \(error)"
+            ? "frame=\(wzTickNumber) entities=\(stats.entityCount) items=\(itemCount) readFail=\(stats.readFailures) chain=0x\(String(stats.chainFailureMask, radix: 16)) \(diagnostic) \(error)"
             : "王者只读绘制已停止"
         let hudText = drawEnabled
             ? "王者只读绘制\n实体:\(stats.entityCount) 可见:\(itemCount)"
@@ -775,7 +839,7 @@ final class laramgr: ObservableObject {
             wzLastHUDUpdateTime = now
         }
         if shouldLog { logmsg("(wz-frame) " + text) }
-        if shouldLog || shouldUpdateHUD || configChanged {
+        if shouldLog || shouldUpdateHUD || configChanged || sampledFPS != nil {
             let epoch = request.0
             let publishedConfig = config
             DispatchQueue.main.async { [weak self] in
@@ -783,8 +847,27 @@ final class laramgr: ObservableObject {
                 self.applyWZConfigToPublished(publishedConfig)
                 if shouldLog { self.wzStatus = text }
                 if shouldUpdateHUD { self.updateGameHUD(hudText) }
+                if let sampledFPS { self.wzMeasuredFPS = sampledFPS }
+                self.wzChainDiagnostic = diagnostic
             }
         }
+    }
+
+    private func wzChainDescription(_ stats: wzesp_stats_t) -> String {
+        var failed: [String] = []
+        let mask = stats.chainFailureMask
+        if mask & (1 << 0) != 0 { failed.append("矩阵") }
+        if mask & (1 << 1) != 0 { failed.append("ActorRoot") }
+        if mask & (1 << 2) != 0 { failed.append("ActorTable") }
+        if mask & (1 << 5) != 0 { failed.append("MonsterRoot") }
+        if mask & (1 << 7) != 0 { failed.append("英雄坐标") }
+        if mask & (1 << 8) != 0 { failed.append("英雄血量") }
+        if mask & (1 << 9) != 0 { failed.append("兵线表") }
+        if mask & (1 << 10) != 0 { failed.append("兵线坐标") }
+        let readiness = "matrix=\(stats.matrixReady) actors=\(stats.actorVectorReady) camp=\(stats.hostCampReady) slots=\(stats.actorSlotCount)"
+        return failed.isEmpty
+            ? "链路正常 \(readiness)"
+            : "失败:\(failed.joined(separator: ",")) \(readiness)"
     }
 
     private func wzConfigFingerprint(_ config: wzesp_config_t) -> UInt64 {
@@ -793,7 +876,8 @@ final class laramgr: ObservableObject {
             config.minimapSize.bitPattern, config.minimapX.bitPattern,
             config.minimapY.bitPattern, config.rayWidth.bitPattern,
             config.boxWidth.bitPattern, config.avatarScale.bitPattern,
-            config.monsterTextSize.bitPattern, config.exposedLineRGBA,
+            config.monsterTextSize.bitPattern, config.skillX.bitPattern,
+            config.skillY.bitPattern, config.exposedLineRGBA,
             config.exposedHealthRGBA, config.defaultLineRGBA,
             config.defaultHealthRGBA
         ]
@@ -819,6 +903,7 @@ final class laramgr: ObservableObject {
         wzShowMonsterTimer = flags & UInt32(WZESP_SHOW_MONSTER_TIMER) != 0
         wzShowSoldier = flags & UInt32(WZESP_SHOW_SOLDIER) != 0
         wzShowSoldierEntity = flags & UInt32(WZESP_SHOW_SOLDIER_ENTITY) != 0
+        wzShowSkill = flags & UInt32(WZESP_SHOW_SKILL) != 0
         wzMinimapSize = Double(config.minimapSize)
         wzMinimapX = Double(config.minimapX)
         wzMinimapY = Double(config.minimapY)
@@ -826,6 +911,8 @@ final class laramgr: ObservableObject {
         wzBoxWidth = Double(config.boxWidth)
         wzAvatarScale = Double(config.avatarScale)
         wzMonsterTextSize = Double(config.monsterTextSize)
+        wzSkillX = Double(config.skillX)
+        wzSkillY = Double(config.skillY)
         wzExposedLineRGBA = config.exposedLineRGBA
         wzExposedHealthRGBA = config.exposedHealthRGBA
         wzDefaultLineRGBA = config.defaultLineRGBA

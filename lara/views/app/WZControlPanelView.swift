@@ -181,11 +181,15 @@ struct WZControlPanelView: View {
                     infoLine("内核状态", mgr.dsready ? "已就绪" : "未初始化")
                     infoLine("读取传输", mgr.wzAttached ? mgr.wzTransportName : "未连接")
                     infoLine("权限", mgr.wzCanWrite ? "读写" : "只读")
+                    infoLine("采集链", mgr.wzChainDiagnostic)
                     Button(mgr.wzAttached ? "断开连接" : "获取信息") {
                         mgr.wzAttached ? mgr.wzDetach() : mgr.prepareWZEnvironment()
                     }
                     .buttonStyle(LightCoreButtonStyle(tint: rose))
                     .disabled(mgr.dsrunning || mgr.wzRunning)
+                    Button("启动游戏") { mgr.launchWZGame() }
+                        .buttonStyle(LightCoreButtonStyle(tint: Color(red: 0.30, green: 0.58, blue: 0.78)))
+                        .disabled(!mgr.dsready || !mgr.hasOffsets || mgr.wzRunning)
                 }
             }
             lightCard("界面设置") {
@@ -211,7 +215,7 @@ struct WZControlPanelView: View {
                     }
                     Divider()
                     Text("性能监测").font(.system(size: 12, weight: .semibold))
-                    infoLine("采集帧", mgr.wzAttached ? "60 FPS" : "--")
+                    infoLine("采集帧", mgr.wzAttached ? String(format: "%.1f FPS", mgr.wzMeasuredFPS) : "--")
                     infoLine("后端", mgr.wzTransportName)
                     infoLine("悬浮窗", mgr.wzGameHUDActive ? "运行中" : "未启动")
                     infoLine("安全边界", mgr.wzCanWrite ? "读写" : "只读锁定")
@@ -270,12 +274,27 @@ struct WZControlPanelView: View {
     }
 
     private var skillPage: some View {
-        lightCard("召唤师技能") {
-            VStack(alignment: .leading, spacing: 12) {
-                featureRow("显示英雄技能冷却", UInt32(WZESP_SHOW_SKILL), mgr.wzShowSkill)
-                Text("读取英雄技能配置与冷却时间，并在游戏画面对应英雄旁显示。")
-                    .font(.system(size: 11))
-                    .foregroundStyle(muted)
+        VStack(spacing: 14) {
+            lightCard("召唤师技能") {
+                VStack(alignment: .leading, spacing: 12) {
+                    featureRow("显示英雄技能冷却", UInt32(WZESP_SHOW_SKILL), mgr.wzShowSkill)
+                    lightSlider("技能栏坐标X", value: $mgr.wzSkillX, range: -300...300)
+                    lightSlider("技能栏坐标Y", value: $mgr.wzSkillY, range: -40...260)
+                    Text("按敌方英雄固定顺序显示头像、血量、辅助技能与召唤师技能冷却。")
+                        .font(.system(size: 11))
+                        .foregroundStyle(muted)
+                }
+            }
+            lightCard("写入功能") {
+                VStack(spacing: 0) {
+                    writeFeatureRow("描边增强")
+                    writeFeatureRow("目标追踪")
+                    writeFeatureRow("自动瞄准")
+                    Text(mgr.wzWriteGateReason)
+                        .font(.system(size: 10))
+                        .foregroundStyle(Color.orange)
+                        .padding(.top, 8)
+                }
             }
         }
     }
@@ -288,6 +307,14 @@ struct WZControlPanelView: View {
                     lightSlider("方框宽度", value: $mgr.wzBoxWidth, range: 0.5...6)
                     lightSlider("头像大小", value: $mgr.wzAvatarScale, range: 0.5...2)
                     lightSlider("野怪计时文本", value: $mgr.wzMonsterTextSize, range: 9...28)
+                }
+            }
+            lightCard("颜色参数") {
+                VStack(spacing: 4) {
+                    colorRow("暴露线条颜色", value: mgr.wzExposedLineRGBA, slot: 1)
+                    colorRow("暴露血条颜色", value: mgr.wzExposedHealthRGBA, slot: 2)
+                    colorRow("默认线条颜色", value: mgr.wzDefaultLineRGBA, slot: 3)
+                    colorRow("默认血条颜色", value: mgr.wzDefaultHealthRGBA, slot: 4)
                 }
             }
         }
@@ -322,6 +349,40 @@ struct WZControlPanelView: View {
         }
         .buttonStyle(.plain)
         .disabled(!mgr.wzAttached)
+    }
+
+    private func writeFeatureRow(_ title: String) -> some View {
+        Button { mgr.requestWZWriteFeature(title) } label: {
+            HStack {
+                Text(title).font(.system(size: 13, weight: .semibold))
+                Spacer()
+                Text(mgr.wzCanWrite ? "待配置" : "只读锁定")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(Color.orange)
+                Image(systemName: "lock.fill")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(Color.orange)
+            }
+            .frame(height: 34)
+            .foregroundStyle(ink.opacity(0.55))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func colorRow(_ title: String, value: UInt32, slot: Int) -> some View {
+        Button { mgr.cycleWZColor(slot) } label: {
+            HStack {
+                Text(title).font(.system(size: 12, weight: .semibold))
+                Spacer()
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(swiftUIColor(value))
+                    .frame(width: 26, height: 22)
+                    .overlay { RoundedRectangle(cornerRadius: 4).stroke(Color.white, lineWidth: 1) }
+            }
+            .frame(height: 32)
+            .foregroundStyle(ink)
+        }
+        .buttonStyle(.plain)
     }
 
     private func infoLine(_ title: String, _ value: String) -> some View {

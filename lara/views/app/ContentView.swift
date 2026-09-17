@@ -31,6 +31,18 @@ struct ContentView: View {
             }
         }
         .preferredColorScheme(.dark)
+        .fullScreenCover(isPresented: Binding(
+            get: { mgr.showWZControlPanel },
+            set: { mgr.showWZControlPanel = $0 }
+        )) {
+            WZControlPanelView(
+                isPresented: Binding(
+                    get: { mgr.showWZControlPanel },
+                    set: { mgr.showWZControlPanel = $0 }
+                )
+            )
+            .environmentObject(mgr)
+        }
         .alert("Core", isPresented: Binding(
             get: { notice != nil },
             set: { if !$0 { notice = nil } }
@@ -158,13 +170,13 @@ struct ContentView: View {
             }
 
             Button {
-                mgr.initializeWZEnvironment()
+                mgr.openWZControlPanel()
             } label: {
                 Group {
                     if mgr.dsrunning || mgr.wzRunning {
                         ProgressView().tint(.white)
                     } else {
-                        Image(systemName: mgr.dsready && mgr.hasOffsets ? "checkmark" : "bolt.fill")
+                        Image(systemName: mgr.dsready && mgr.hasOffsets ? "rectangle.on.rectangle" : "bolt.fill")
                             .font(.system(size: 26, weight: .bold))
                     }
                 }
@@ -198,7 +210,7 @@ struct ContentView: View {
             .buttonStyle(.plain)
 
             Button {
-                notice = "先点击上方状态按钮完成初始化，再点击“启动游戏”。进入游戏后使用三指轻触呼出控制台。"
+                notice = "点击上方状态按钮完成初始化并打开控制台，再点击“启动游戏”。进入游戏后使用三指轻触呼出同一组功能。"
             } label: {
                 VStack(spacing: 2) {
                     Image(systemName: "book.fill")
