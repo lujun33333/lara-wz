@@ -323,6 +323,46 @@ final class laramgr: ObservableObject {
             wz_find_image_base(uuid.baseAddress, 6)
         }
     }
+    func prepareWZEnvironment() {
+        guard !dsrunning, !wzRunning, !wzAttached else { return }
+        if !dsready {
+            offsets_init()
+            wzStatus = "正在初始化内核环境"
+            run { [weak self] success in
+                guard let self else { return }
+                if success {
+                    self.prepareWZEnvironment()
+                } else {
+                    self.wzStatus = "内核环境初始化失败"
+                }
+            }
+            return
+        }
+        if !hasOffsets {
+            wzRunning = true
+            wzStatus = "正在获取并解析内核偏移"
+            logmsg("(wz) 正在获取 kernelcache 并解析内核偏移")
+            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+                let fetched = fetchkcache()
+                let loaded = fetched && dlkcache()
+                DispatchQueue.main.async {
+                    guard let self else { return }
+                    self.hasOffsets = loaded
+                    self.wzRunning = false
+                    if loaded {
+                        self.wzStatus = "内核偏移已就绪，正在连接王者荣耀"
+                        self.logmsg("(wz) 内核偏移已就绪，继续连接 smoba")
+                        self.wzAttach()
+                    } else {
+                        self.wzStatus = "内核偏移获取失败"
+                        self.logmsg("(wz) kernelcache 获取或偏移解析失败")
+                    }
+                }
+            }
+            return
+        }
+        wzAttach()
+    }
     func wzAttach(process: String = "smoba") {
         guard !wzRunning, !wzAttached else { return }
         wzRunning = true
@@ -364,13 +404,15 @@ final class laramgr: ObservableObject {
                     var hudConfig = self.wzHUDConfig()
                     wzhud_set_wz_config(&hudConfig)
                     self.logmsg("(wz) connected pid=\(pid) UnityFramework=0x\(String(base, radix: 16)) transport=\(transportName) backendWrite=\(backendCanWrite ? "yes" : "no") profileWrite=disabled")
+                    self.wzGameHUDEnabled = true
+                    self.wzGameHUDSessionArmed = true
+                    UserDefaults.standard.set(false, forKey: "wzGameHUDEnabled")
+                    self.applyGameHUDPresentation()
+                    let requested = wzhud_set_enabled(true)
                     self.startWZLoop()
-                    if self.wzGameHUDEnabled && self.wzGameHUDSessionArmed {
-                        wzhud_set_enabled(true)
-                        self.updateGameHUD("王者已连接\n等待功能开关")
-                    } else {
-                        self.wzGameHUDStatus = "已连接，打开后显示"
-                    }
+                    self.updateGameHUD("王者已连接\n等待功能开关")
+                    let hudError = String(cString: wzhud_last_error())
+                    self.logmsg("(wz.hud) requested=\(requested ? "yes" : "no") active=\(self.wzGameHUDActive ? "yes" : "no") error=\(hudError.isEmpty ? "none" : hudError)")
                 } else {
                     "none".withCString {
                         wzhud_set_transport_state(false, false, $0)

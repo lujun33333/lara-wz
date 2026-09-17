@@ -12,6 +12,8 @@ function Require-Text([string]$Path, [string]$Pattern, [string]$Message) {
 Require-Text 'lara/kexploit/wzmem.h' 'WZ_CAP_READ' '缺少统一读取 capability'
 Require-Text 'lara/kexploit/wzmem.h' 'WZ_CAP_WRITE' '缺少统一写入 capability'
 Require-Text 'lara/kexploit/wzmem.m' 'wz_try_mach_connect\(name, generation\).*return true' 'Mach task 未作为首选传输'
+Require-Text 'lara/kexploit/wzmem.m' 'task_read_for_pid' '缺少只读 task port 获取回退'
+Require-Text 'lara/kexploit/wzmem.m' 'wz_try_mach_connect_pid\(name, pid, proc, generation\)' '未使用内核确认的 PID 重试 Mach 传输'
 Require-Text 'lara/kexploit/wzmem.m' 'mach_port_deallocate\(mach_task_self\(\), machTask\)' '断开未释放 task port'
 Require-Text 'lara/kexploit/wzmem.m' 'region walk 后目标身份失效' 'Mach region walk 后未复核目标身份'
 Require-Text 'lara/kexploit/wzmem.m' 'writing \? WZ_CAP_WRITE : WZ_CAP_READ' '读写未按 capability 门禁'
@@ -21,6 +23,8 @@ Require-Text 'lara/kexploit/wzmem.m' 'extern kern_return_t mach_vm_region_recurs
 Require-Text 'lara/kexploit/wzmem.m' 'magic == MH_MAGIC_64' '内核 Mach-O 魔数自检被改名污染'
 Require-Text 'lara/classes/laramgr.swift' 'let canWrite = false' 'WZ 未保持版本级写权限 fail-closed'
 Require-Text 'lara/classes/laramgr.swift' 'wzhud_set_transport_state' '连接状态未传给控制面板'
+Require-Text 'lara/classes/laramgr.swift' 'func prepareWZEnvironment\(' 'Core 初始化页未接完整环境准备链'
+Require-Text 'lara/classes/laramgr.swift' 'wzGameHUDSessionArmed = true[\s\S]*wzhud_set_enabled\(true\)' '连接成功后未自动启动游戏内 HUD'
 Require-Text 'lara/kexploit/wzesp.h' 'WZESP_SHOW_MAP_ADJUSTMENT' '缺少独立地图调节显示开关'
 Require-Text 'lara/kexploit/wz/YuanbaoCollector.mm' '_logicVisible=0x505, _meshVisible=0x506, _inCamera=0x507' '缺少王者只读视野字段链'
 Require-Text 'lara/kexploit/wz/YuanbaoCollector.mm' 'header\.camp != host\.camp' '英雄敌我分类未接 camp'
@@ -32,14 +36,25 @@ Require-Text 'lara/kexploit/WZHUDBridge.mm' '10000 \+ \(NSInteger\)__builtin_ctz
 Require-Text 'lara/kexploit/wz/WZYuanbaoDrawPolicy.h' 'kRecallSpinRadiansPerSecond = 7\.854f' '未同步元宝回城旋转参数'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'g_wzSnapshotGeneration' '并发断开可能吞掉最后清空帧'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'URLForResource:@"heroatlas"' 'HUD 未接入王者英雄头像图集'
-Require-Text 'lara/views/app/WZControlPanelView.swift' 'Text\("CORE"\)' '缺少 Core 标题'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'error=%s' 'HUD 创建失败没有输出可诊断日志'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'signatureWithObjCTypes:"v@:Id"' 'HUD 未使用 Core 一致的窗口托管调用约定'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'UISceneActivationStateForegroundActive' 'HUD 未绑定前台活动场景'
+Require-Text 'lara/views/app/WZControlPanelView.swift' 'Text\("王者 Core"\)' '缺少王者 Core 标题'
+Require-Text 'lara/views/app/WZControlPanelView.swift' '@State private var page: WZCorePage = \.initialize' 'Core 首屏未落到初始化页'
 Require-Text 'lara/views/app/WZControlPanelView.swift' '显示头像' '缺少英雄页功能'
 Require-Text 'lara/views/app/WZControlPanelView.swift' '显示野怪计时' '缺少兵野页功能'
 Require-Text 'lara/views/app/WZControlPanelView.swift' 'featureToggle\("小地图"' '缺少独立小地图开关'
 Require-Text 'lara/views/app/WZControlPanelView.swift' 'featureToggle\("地图调节显示"' '缺少地图调节显示开关'
 Require-Text 'lara/views/app/WZControlPanelView.swift' '地图坐标Y' '缺少调整页功能'
 Require-Text 'lara/views/app/WZControlPanelView.swift' '只读后端已锁定' '缺少只读状态提示'
+Require-Text 'lara/views/app/ContentView.swift' 'WZControlPanelView\(isPresented: \.constant\(true\), allowsDismiss: false\)' '应用首屏仍不是 Core 控制台'
 Require-Text '.github/workflows/build.yml' 'scripts/build_ipa_wz\.sh' 'CI 仍未使用王者构建入口'
+Require-Text 'scripts/build_ipa_wz.sh' 'INFOPLIST_KEY_LARABuildSourceCommit' '构建产物未写入源码提交标识'
+
+$appSource = Get-Content -LiteralPath (Join-Path $root 'lara/lara.swift') -Raw
+if ($appSource -match 'TabView\s*\(') {
+    throw 'FAIL: 应用入口仍保留旧 TabView 外壳'
+}
 
 $atlas = Join-Path $root 'lara/heroatlas.bin'
 if (-not (Test-Path -LiteralPath $atlas) -or (Get-Item -LiteralPath $atlas).Length -ne 2164890) {

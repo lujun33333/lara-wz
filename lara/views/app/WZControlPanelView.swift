@@ -15,35 +15,72 @@ private enum WZCorePage: Int, CaseIterable, Identifiable {
         case .tune: return "调整"
         }
     }
+    var subtitle: String {
+        switch self {
+        case .initialize: return "完成内核环境、偏移解析与目标连接。"
+        case .home: return "查看传输能力和游戏内面板状态。"
+        case .hero: return "英雄信息与视野绘制按开关独立生效。"
+        case .lane: return "野怪、兵线点位与实体分别控制。"
+        case .other: return "版本、设备与只读安全边界。"
+        case .tune: return "统一调整地图、线条、头像与颜色。"
+        }
+    }
 }
 
 struct WZControlPanelView: View {
     @EnvironmentObject private var mgr: laramgr
     @Binding var isPresented: Bool
-    @State private var page: WZCorePage = .home
+    @State private var page: WZCorePage = .initialize
+    let allowsDismiss: Bool
 
-    private let accent = Color(red: 0.16, green: 0.77, blue: 0.65)
-    private let panel = Color(red: 0.035, green: 0.043, blue: 0.059)
-    private let sidebar = Color(red: 0.051, green: 0.067, blue: 0.09)
-    private let card = Color(red: 0.078, green: 0.102, blue: 0.137)
+    init(isPresented: Binding<Bool>, allowsDismiss: Bool = true) {
+        _isPresented = isPresented
+        self.allowsDismiss = allowsDismiss
+    }
+
+    private let accent = Color(red: 0.54, green: 0.49, blue: 1.0)
+    private let statusAccent = Color(red: 0.30, green: 0.85, blue: 0.77)
+    private let panel = Color(red: 0.047, green: 0.071, blue: 0.118).opacity(0.97)
+    private let sidebar = Color(red: 0.054, green: 0.078, blue: 0.126)
+    private let card = Color(red: 0.084, green: 0.118, blue: 0.184).opacity(0.84)
 
     var body: some View {
         GeometryReader { proxy in
             ZStack {
-                Color.black.opacity(0.72).ignoresSafeArea()
+                LinearGradient(
+                    colors: [
+                        Color(red: 0.055, green: 0.105, blue: 0.17),
+                        Color(red: 0.025, green: 0.039, blue: 0.071),
+                        Color(red: 0.095, green: 0.047, blue: 0.11)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                .ignoresSafeArea()
+                Circle()
+                    .fill(accent.opacity(0.18))
+                    .frame(width: 420, height: 420)
+                    .blur(radius: 95)
+                    .offset(x: 280, y: -180)
+                Circle()
+                    .fill(statusAccent.opacity(0.11))
+                    .frame(width: 360, height: 360)
+                    .blur(radius: 105)
+                    .offset(x: -320, y: 230)
                 HStack(spacing: 0) {
                     sideBar
                     pageBody
                 }
                 .frame(width: 900, height: 600)
                 .background(panel)
-                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
                 .overlay {
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: 24, style: .continuous)
+                        .stroke(Color(red: 0.70, green: 0.76, blue: 0.88).opacity(0.17), lineWidth: 1)
                 }
-                .scaleEffect(min(1, min((proxy.size.width - 24) / 900,
-                                        (proxy.size.height - 20) / 600)))
+                .shadow(color: .black.opacity(0.52), radius: 45, y: 20)
+                .scaleEffect(min(1, min((proxy.size.width - 28) / 900,
+                                        (proxy.size.height - 24) / 600)))
             }
         }
         .preferredColorScheme(.dark)
@@ -51,14 +88,26 @@ struct WZControlPanelView: View {
 
     private var sideBar: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("CORE")
-                .font(.system(size: 30, weight: .black))
-                .foregroundStyle(.white)
-            Text("SMOBA")
-                .font(.system(size: 12, weight: .semibold, design: .monospaced))
-                .foregroundStyle(.secondary)
-                .padding(.top, 2)
-                .padding(.bottom, 18)
+            HStack(spacing: 11) {
+                Text("王")
+                    .font(.system(size: 17, weight: .black))
+                    .frame(width: 36, height: 36)
+                    .background(
+                        LinearGradient(colors: [accent, Color(red: 0.40, green: 0.34, blue: 0.86)],
+                                       startPoint: .topLeading, endPoint: .bottomTrailing),
+                        in: RoundedRectangle(cornerRadius: 12)
+                    )
+                    .shadow(color: accent.opacity(0.32), radius: 12, y: 6)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("王者 Core")
+                        .font(.system(size: 14, weight: .bold))
+                    Text("SMOBA CONTROL")
+                        .font(.system(size: 9, weight: .medium, design: .monospaced))
+                        .foregroundStyle(Color.white.opacity(0.48))
+                }
+            }
+            .padding(.horizontal, 8)
+            .padding(.bottom, 22)
 
             navButton(.initialize)
             navButton(.home)
@@ -71,9 +120,23 @@ struct WZControlPanelView: View {
                 .padding(.top, 18)
             navButton(.tune)
             Spacer()
-            Text(mgr.wzAttached ? "ONLINE" : "OFFLINE")
-                .font(.caption2.monospaced().weight(.bold))
-                .foregroundStyle(mgr.wzAttached ? accent : .orange)
+            VStack(alignment: .leading, spacing: 8) {
+                Text("运行状态")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(Color.white.opacity(0.45))
+                HStack(spacing: 7) {
+                    Circle()
+                        .fill(mgr.wzAttached ? statusAccent : .orange)
+                        .frame(width: 7, height: 7)
+                        .shadow(color: mgr.wzAttached ? statusAccent : .orange, radius: 6)
+                    Text(mgr.wzAttached ? "面板已连接" : "等待初始化")
+                        .font(.system(size: 11, weight: .semibold))
+                }
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.white.opacity(0.025), in: RoundedRectangle(cornerRadius: 14))
+            .overlay { RoundedRectangle(cornerRadius: 14).stroke(Color.white.opacity(0.08)) }
         }
         .padding(.horizontal, 18)
         .padding(.vertical, 18)
@@ -83,22 +146,37 @@ struct WZControlPanelView: View {
 
     private var pageBody: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                Text(page.title)
-                    .font(.system(size: 26, weight: .bold))
-                Spacer()
-                Button {
-                    isPresented = false
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 15, weight: .semibold))
-                        .frame(width: 34, height: 34)
-                        .background(Color.white.opacity(0.06), in: Circle())
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(page.title)
+                        .font(.system(size: 20, weight: .bold))
+                    Text(page.subtitle)
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(Color.white.opacity(0.45))
                 }
-                .buttonStyle(.plain)
+                Spacer()
+                Text(mgr.wzCanWrite ? "读写模式" : "只读模式")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(statusAccent)
+                    .padding(.horizontal, 10)
+                    .frame(height: 28)
+                    .background(statusAccent.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+                    .overlay { RoundedRectangle(cornerRadius: 8).stroke(statusAccent.opacity(0.16)) }
+                if allowsDismiss {
+                    Button {
+                        isPresented = false
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 15, weight: .semibold))
+                            .frame(width: 34, height: 34)
+                            .background(Color.white.opacity(0.06), in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                }
             }
             .padding(.horizontal, 24)
-            .frame(height: 70)
+            .frame(height: 74)
+            .overlay(alignment: .bottom) { Divider().opacity(0.25) }
 
             ScrollView(showsIndicators: false) {
                 Group {
@@ -126,10 +204,10 @@ struct WZControlPanelView: View {
                 .font(.system(size: 14, weight: .semibold))
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 14)
-                .frame(height: 38)
-                .foregroundStyle(page == target ? accent : Color.secondary)
+                .frame(height: 42)
+                .foregroundStyle(page == target ? .white : Color.white.opacity(0.52))
                 .background(page == target ? accent.opacity(0.18) : .clear,
-                            in: RoundedRectangle(cornerRadius: 9))
+                            in: RoundedRectangle(cornerRadius: 12))
         }
         .buttonStyle(.plain)
     }
@@ -151,13 +229,24 @@ struct WZControlPanelView: View {
                 ("读取传输", mgr.wzAttached ? mgr.wzTransportName : "未连接"),
                 ("权限模式", mgr.wzCanWrite ? "读写" : "只读")
             ])
-            Button(mgr.wzAttached ? "断开环境" : "初始化环境") {
-                mgr.wzAttached ? mgr.wzDetach() : mgr.wzAttach()
+            Button(initializationActionTitle) {
+                if mgr.wzAttached {
+                    mgr.wzDetach()
+                } else {
+                    mgr.prepareWZEnvironment()
+                }
             }
             .buttonStyle(CorePrimaryButtonStyle(accent: accent))
-            .disabled(mgr.wzRunning)
-            if mgr.wzRunning { ProgressView().tint(accent) }
+            .disabled(mgr.dsrunning || mgr.wzRunning)
+            if mgr.dsrunning || mgr.wzRunning { ProgressView().tint(accent) }
         }
+    }
+
+    private var initializationActionTitle: String {
+        if mgr.dsrunning || mgr.wzRunning { return "处理中…" }
+        if !mgr.dsready { return "初始化环境" }
+        if !mgr.hasOffsets { return "获取偏移并连接" }
+        return mgr.wzAttached ? "断开环境" : "连接王者荣耀"
     }
 
     private var homePage: some View {
@@ -254,7 +343,7 @@ struct WZControlPanelView: View {
                     Spacer()
                     Text(row.1)
                         .font(.system(size: 13, weight: .semibold, design: .monospaced))
-                        .foregroundStyle(row.1.contains("只读") ? .orange : accent)
+                        .foregroundStyle(row.1.contains("只读") ? .orange : statusAccent)
                 }
                 .font(.system(size: 14, weight: .medium))
                 .frame(height: 44)

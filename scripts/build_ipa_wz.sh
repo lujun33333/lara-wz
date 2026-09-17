@@ -59,6 +59,7 @@ grep -q 'wz_read' "$ROOT/lara/kexploit/wz/KoiProjection.mm" \
 
 rm -rf "$DERIVED"
 mkdir -p "$ROOT/build"
+SOURCE_COMMIT=$(git rev-parse --short=12 HEAD 2>/dev/null || echo nogit)
 say "构建 lara-wz ($CONFIG)..."
 set +e
 xcodebuild \
@@ -71,6 +72,7 @@ xcodebuild \
     CODE_SIGNING_REQUIRED=NO \
     CODE_SIGN_ENTITLEMENTS="" \
     CODE_SIGNING_ALLOWED=NO \
+    INFOPLIST_KEY_LARABuildSourceCommit="$SOURCE_COMMIT" \
     clean build 2>&1 | tee "$ROOT/build/xcodebuild-wz.log" | tail -40
 status=${PIPESTATUS[0]}
 set -e
@@ -101,7 +103,6 @@ LC_ALL=C grep -a -q 'lara.wz.local-hud' "$BIN" \
 [[ -f "$SRC_APP/heroatlas.bin" ]] \
     || die "最终 App 未包含英雄头像图集"
 
-SOURCE_COMMIT=$(git rev-parse --short=12 HEAD 2>/dev/null || echo nogit)
 WZ_UUID="6a838f46-a5e8-3ec9-bbce-6b01ab2ffad4"
 FINGERPRINT=$(shasum -a 256 \
     "$ROOT/lara/kexploit/wzmem.m" \

@@ -8,10 +8,6 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
-enum taboptions {
-    case applying, tweaks, files, logs
-}
-
 let g_isunsupported: Bool = isunsupported()
 var weonadebugbuild_pjbweouttahereexclamationmark: Bool = false
 
@@ -20,10 +16,8 @@ struct lara: App {
     @StateObject private var mgr = laramgr.shared
     @StateObject private var iconthememgr = IconThemeManager.shared
     @Environment(\.scenePhase) var scenephase
-    @AppStorage("selectedMethod") private var selectedMethod: method = .hybrid
     @AppStorage("keepAlive") private var keepalive: Bool = false
     @AppStorage("logsdisplaymode") private var logsdisplaymode: logsdisplaymode = .toolbar
-    @State private var selectedtab: taboptions = .applying
     
     init() {
         #if DEBUG
@@ -44,28 +38,7 @@ struct lara: App {
     
     var body: some Scene {
         WindowGroup {
-            TabView(selection: $selectedtab) {
-                ContentView()
-                    .tabItem {
-                        Image(systemName: "wrench.and.screwdriver.fill")
-                    }
-                    .tag(taboptions.applying)
-
-                TweaksView(mgr: mgr)
-                    .tabItem {
-                        Image(systemName: "ant.fill")
-                    }
-                    .tag(taboptions.tweaks)
-                
-                // this too
-                if logsdisplaymode == .tabs {
-                    LogsView(logger: globallogger)
-                        .tabItem {
-                            Image(systemName: "terminal")
-                        }
-                        .tag(taboptions.logs)
-                }
-            }
+            ContentView()
             .environmentObject(mgr)
             .overlay {
                 if mgr.showrespring {
