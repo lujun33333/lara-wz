@@ -49,7 +49,7 @@ Require-Text 'lara/views/app/WZControlPanelView.swift' '地图坐标Y' '缺少�
 Require-Text 'lara/views/app/WZControlPanelView.swift' '只读后端已锁定' '缺少只读状态提示'
 Require-Text 'lara/views/app/ContentView.swift' 'WZControlPanelView\(isPresented: \.constant\(true\), allowsDismiss: false\)' '应用首屏仍不是 Core 控制台'
 Require-Text '.github/workflows/build.yml' 'scripts/build_ipa_wz\.sh' 'CI 仍未使用王者构建入口'
-Require-Text 'scripts/build_ipa_wz.sh' 'INFOPLIST_KEY_LARABuildSourceCommit' '构建产物未写入源码提交标识'
+Require-Text 'scripts/build_ipa_wz.sh' 'PlistBuddy.*LARABuildSourceCommit' '构建产物未写入源码提交标识'
 
 $appSource = Get-Content -LiteralPath (Join-Path $root 'lara/lara.swift') -Raw
 if ($appSource -match 'TabView\s*\(') {

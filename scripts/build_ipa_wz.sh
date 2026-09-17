@@ -72,7 +72,6 @@ xcodebuild \
     CODE_SIGNING_REQUIRED=NO \
     CODE_SIGN_ENTITLEMENTS="" \
     CODE_SIGNING_ALLOWED=NO \
-    INFOPLIST_KEY_LARABuildSourceCommit="$SOURCE_COMMIT" \
     clean build 2>&1 | tee "$ROOT/build/xcodebuild-wz.log" | tail -40
 status=${PIPESTATUS[0]}
 set -e
@@ -85,6 +84,14 @@ fi
 SRC_APP="$DERIVED/Build/Products/$CONFIG-iphoneos/$APP.app"
 BIN="$SRC_APP/$APP"
 [[ -f "$BIN" ]] || die "构建后未找到 $BIN"
+INFO_PLIST="$SRC_APP/Info.plist"
+[[ -f "$INFO_PLIST" ]] || die "构建后未找到 Info.plist"
+/usr/libexec/PlistBuddy -c 'Delete :LARABuildSourceCommit' "$INFO_PLIST" \
+    >/dev/null 2>&1 || true
+/usr/libexec/PlistBuddy -c "Add :LARABuildSourceCommit string $SOURCE_COMMIT" \
+    "$INFO_PLIST"
+[[ "$(/usr/libexec/PlistBuddy -c 'Print :LARABuildSourceCommit' "$INFO_PLIST")" == "$SOURCE_COMMIT" ]] \
+    || die "Info.plist 未写入源码提交标识"
 
 for object in wzmem.o wzesp.o KoiProjection.o YuanbaoCollector.o WZHUDBridge.o laramgr.o; do
     find "$DERIVED" -name "$object" -print -quit | grep -q . \
