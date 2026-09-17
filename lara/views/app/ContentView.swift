@@ -28,21 +28,20 @@ struct ContentView: View {
                     .padding(.horizontal, 16)
                     .padding(.top, max(proxy.safeAreaInsets.top + 16, 24))
                 }
+                if mgr.showWZControlPanel {
+                    WZControlPanelView(
+                        isPresented: Binding(
+                            get: { mgr.showWZControlPanel },
+                            set: { mgr.showWZControlPanel = $0 }
+                        )
+                    )
+                    .environmentObject(mgr)
+                    .transition(.opacity)
+                    .zIndex(10)
+                }
             }
         }
         .preferredColorScheme(.dark)
-        .fullScreenCover(isPresented: Binding(
-            get: { mgr.showWZControlPanel },
-            set: { mgr.showWZControlPanel = $0 }
-        )) {
-            WZControlPanelView(
-                isPresented: Binding(
-                    get: { mgr.showWZControlPanel },
-                    set: { mgr.showWZControlPanel = $0 }
-                )
-            )
-            .environmentObject(mgr)
-        }
         .alert("Core", isPresented: Binding(
             get: { notice != nil },
             set: { if !$0 { notice = nil } }

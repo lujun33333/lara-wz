@@ -172,7 +172,7 @@ struct WZControlPanelView: View {
                             .padding(.horizontal, 10)
                             .frame(height: 25)
                             .background(rose, in: Capsule())
-                        Text("V2.2 王者")
+                        Text("V2.2版本")
                             .font(.system(size: 11, weight: .semibold))
                             .foregroundStyle(muted)
                     }
