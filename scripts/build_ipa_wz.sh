@@ -74,7 +74,11 @@ xcodebuild \
     clean build 2>&1 | tee "$ROOT/build/xcodebuild-wz.log" | tail -40
 status=${PIPESTATUS[0]}
 set -e
-[[ $status -eq 0 ]] || die "xcodebuild 失败，见 build/xcodebuild-wz.log"
+if [[ $status -ne 0 ]]; then
+    grep -nE '(^|[[:space:]])(fatal )?error:' \
+        "$ROOT/build/xcodebuild-wz.log" | tail -120 || true
+    die "xcodebuild 失败，见 build/xcodebuild-wz.log"
+fi
 
 SRC_APP="$DERIVED/Build/Products/$CONFIG-iphoneos/$APP.app"
 BIN="$SRC_APP/$APP"
