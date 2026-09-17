@@ -248,10 +248,7 @@ struct ContentView: View {
     private var equalizer: some View {
         HStack(alignment: .bottom, spacing: 4) {
             ForEach(0..<38, id: \.self) { index in
-                RoundedRectangle(cornerRadius: 3)
-                    .fill(LinearGradient(colors: [.pink, .purple, .cyan],
-                                         startPoint: .bottom, endPoint: .top))
-                    .frame(height: CGFloat(20 + ((index * 17 + index * index * 3) % 58)))
+                equalizerBar(index)
             }
         }
         .padding(.horizontal, 22)
@@ -259,6 +256,14 @@ struct ContentView: View {
         .frame(maxWidth: .infinity, minHeight: 116, alignment: .bottom)
         .background(Color.black.opacity(0.12), in: RoundedRectangle(cornerRadius: 34))
         .overlay { RoundedRectangle(cornerRadius: 34).stroke(Color.purple.opacity(0.32)) }
+    }
+
+    private func equalizerBar(_ index: Int) -> some View {
+        let rawHeight = 20 + ((index * 17 + index * index * 3) % 58)
+        return RoundedRectangle(cornerRadius: 3)
+            .fill(LinearGradient(colors: [Color.pink, Color.purple, Color.cyan],
+                                 startPoint: .bottom, endPoint: .top))
+            .frame(height: CGFloat(rawHeight))
     }
 
     private func particleColor(_ index: Int) -> Color {
