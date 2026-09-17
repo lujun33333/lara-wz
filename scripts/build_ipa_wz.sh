@@ -37,6 +37,7 @@ need_files=(
     "lara/kexploit/WZHUDBridge.h"
     "lara/kexploit/WZHUDBridge.mm"
     "lara/heroatlas.bin"
+    "lara/core-mountain.png"
     "lara/classes/laramgr.swift"
     "lara/views/app/WZControlPanelView.swift"
 )
@@ -109,6 +110,8 @@ LC_ALL=C grep -a -q 'lara.wz.local-hud' "$BIN" \
     || die "最终二进制没有王者托管 HUD"
 [[ -f "$SRC_APP/heroatlas.bin" ]] \
     || die "最终 App 未包含英雄头像图集"
+[[ -f "$SRC_APP/core-mountain.png" ]] \
+    || die "最终 App 未包含 Core 启动页山景资产"
 
 WZ_UUID="6a838f46-a5e8-3ec9-bbce-6b01ab2ffad4"
 FINGERPRINT=$(shasum -a 256 \

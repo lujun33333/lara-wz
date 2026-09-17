@@ -13,6 +13,9 @@ Require-Text 'lara/kexploit/wzmem.h' 'WZ_CAP_READ' '缺少统一读取 capabilit
 Require-Text 'lara/kexploit/wzmem.h' 'WZ_CAP_WRITE' '缺少统一写入 capability'
 Require-Text 'lara/kexploit/wzmem.m' 'wz_try_mach_connect\(name, generation\).*return true' 'Mach task 未作为首选传输'
 Require-Text 'lara/kexploit/wzmem.m' 'task_read_for_pid' '缺少只读 task port 获取回退'
+Require-Text 'lara/kexploit/wzmem.m' 'processor_set_tasks' '缺少 Core processor-set task port 回退'
+Require-Text 'lara/kexploit/wzmem.m' 'task_threads\(' '缺少 Core task 线程只读探测'
+Require-Text 'lara/kexploit/wzmem.m' 'mach_port_deallocate\(mach_task_self\(\), threads\[index\]\)' '线程端口未逐个释放'
 Require-Text 'lara/kexploit/wzmem.m' 'wz_try_mach_connect_pid\(name, pid, proc, generation\)' '未使用内核确认的 PID 重试 Mach 传输'
 Require-Text 'lara/kexploit/wzmem.m' 'mach_port_deallocate\(mach_task_self\(\), machTask\)' '断开未释放 task port'
 Require-Text 'lara/kexploit/wzmem.m' 'region walk 后目标身份失效' 'Mach region walk 后未复核目标身份'
@@ -26,6 +29,7 @@ Require-Text 'lara/classes/laramgr.swift' 'wzhud_set_transport_state' '连接状
 Require-Text 'lara/classes/laramgr.swift' 'func prepareWZEnvironment\(' 'Core 初始化页未接完整环境准备链'
 Require-Text 'lara/classes/laramgr.swift' 'wzGameHUDSessionArmed = true[\s\S]*wzhud_set_enabled\(true\)' '连接成功后未自动启动游戏内 HUD'
 Require-Text 'lara/kexploit/wzesp.h' 'WZESP_SHOW_MAP_ADJUSTMENT' '缺少独立地图调节显示开关'
+Require-Text 'lara/kexploit/wzesp.h' 'WZESP_SHOW_SKILL' '缺少技能页读取开关'
 Require-Text 'lara/kexploit/wz/YuanbaoCollector.mm' '_logicVisible=0x505, _meshVisible=0x506, _inCamera=0x507' '缺少王者只读视野字段链'
 Require-Text 'lara/kexploit/wz/YuanbaoCollector.mm' 'header\.camp != host\.camp' '英雄敌我分类未接 camp'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'item\.primitive == WZESP_PRIMITIVE_MONSTER_POINT' '野怪点位和实体未独立过滤'
@@ -39,15 +43,18 @@ Require-Text 'lara/kexploit/WZHUDBridge.mm' 'URLForResource:@"heroatlas"' 'HUD �
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'error=%s' 'HUD 创建失败没有输出可诊断日志'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'signatureWithObjCTypes:"v@:Id"' 'HUD 未使用 Core 一致的窗口托管调用约定'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'UISceneActivationStateForegroundActive' 'HUD 未绑定前台活动场景'
-Require-Text 'lara/views/app/WZControlPanelView.swift' 'Text\("王者 Core"\)' '缺少王者 Core 标题'
-Require-Text 'lara/views/app/WZControlPanelView.swift' '@State private var page: WZCorePage = \.initialize' 'Core 首屏未落到初始化页'
+Require-Text 'lara/views/app/WZControlPanelView.swift' 'Text\("CORE"\)' '缺少 Core 原版标题'
+Require-Text 'lara/views/app/WZControlPanelView.swift' '@State private var page: WZCorePage = \.home' '游戏控制台首屏未落到主页'
 Require-Text 'lara/views/app/WZControlPanelView.swift' '显示头像' '缺少英雄页功能'
 Require-Text 'lara/views/app/WZControlPanelView.swift' '显示野怪计时' '缺少兵野页功能'
-Require-Text 'lara/views/app/WZControlPanelView.swift' 'featureToggle\("小地图"' '缺少独立小地图开关'
-Require-Text 'lara/views/app/WZControlPanelView.swift' 'featureToggle\("地图调节显示"' '缺少地图调节显示开关'
+Require-Text 'lara/views/app/WZControlPanelView.swift' '显示英雄技能冷却' '缺少技能页功能'
+Require-Text 'lara/views/app/WZControlPanelView.swift' 'featureRow\("显示小地图"' '缺少独立小地图开关'
+Require-Text 'lara/views/app/WZControlPanelView.swift' 'featureRow\("地图调节显示"' '缺少地图调节显示开关'
 Require-Text 'lara/views/app/WZControlPanelView.swift' '地图坐标Y' '缺少调整页功能'
-Require-Text 'lara/views/app/WZControlPanelView.swift' '只读后端已锁定' '缺少只读状态提示'
-Require-Text 'lara/views/app/ContentView.swift' 'WZControlPanelView\(isPresented: \.constant\(true\), allowsDismiss: false\)' '应用首屏仍不是 Core 控制台'
+Require-Text 'lara/views/app/WZControlPanelView.swift' '只读锁定' '缺少只读状态提示'
+Require-Text 'lara/views/app/ContentView.swift' 'Image\("core-mountain"\)' '应用首屏未接 Core 山景卡片'
+Require-Text 'lara/views/app/ContentView.swift' '关闭菜单' '应用首屏未同步 Core 环形入口'
+Require-Text 'lara/views/app/ContentView.swift' 'mgr\.launchWZGame\(\)' '启动游戏入口未接王者启动链'
 Require-Text '.github/workflows/build.yml' 'scripts/build_ipa_wz\.sh' 'CI 仍未使用王者构建入口'
 Require-Text 'scripts/build_ipa_wz.sh' 'PlistBuddy.*LARABuildSourceCommit' '构建产物未写入源码提交标识'
 
@@ -63,6 +70,11 @@ if (-not (Test-Path -LiteralPath $atlas) -or (Get-Item -LiteralPath $atlas).Leng
 $atlasHash = (Get-FileHash -LiteralPath $atlas -Algorithm SHA256).Hash
 if ($atlasHash -ne '32061154E6545F5372C567BD0598AFBAE815E18EAA80B1F4247C218FB3FB913E') {
     throw 'FAIL: 王者英雄头像图集哈希不符'
+}
+
+$launcher = Join-Path $root 'lara/core-mountain.png'
+if (-not (Test-Path -LiteralPath $launcher) -or (Get-Item -LiteralPath $launcher).Length -lt 500000) {
+    throw 'FAIL: Core 启动页山景资产缺失或无效'
 }
 
 Write-Output 'PASS: WZ/Core source alignment, capability gating and lifecycle invariants'

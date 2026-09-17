@@ -125,6 +125,7 @@ final class laramgr: ObservableObject {
     @Published var wzShowMonsterTimer: Bool = false
     @Published var wzShowSoldier: Bool = false
     @Published var wzShowSoldierEntity: Bool = false
+    @Published var wzShowSkill: Bool = false
     @Published var wzMinimapSize: Double = 150
     @Published var wzMinimapX: Double = 0
     @Published var wzMinimapY: Double = 0
@@ -323,7 +324,10 @@ final class laramgr: ObservableObject {
             wz_find_image_base(uuid.baseAddress, 6)
         }
     }
-    func prepareWZEnvironment() {
+    func initializeWZEnvironment() {
+        prepareWZEnvironment(connectWhenReady: false)
+    }
+    func prepareWZEnvironment(connectWhenReady: Bool = true) {
         guard !dsrunning, !wzRunning, !wzAttached else { return }
         if !dsready {
             offsets_init()
@@ -331,7 +335,7 @@ final class laramgr: ObservableObject {
             run { [weak self] success in
                 guard let self else { return }
                 if success {
-                    self.prepareWZEnvironment()
+                    self.prepareWZEnvironment(connectWhenReady: connectWhenReady)
                 } else {
                     self.wzStatus = "内核环境初始化失败"
                 }
@@ -350,9 +354,14 @@ final class laramgr: ObservableObject {
                     self.hasOffsets = loaded
                     self.wzRunning = false
                     if loaded {
-                        self.wzStatus = "内核偏移已就绪，正在连接王者荣耀"
-                        self.logmsg("(wz) 内核偏移已就绪，继续连接 smoba")
-                        self.wzAttach()
+                        if connectWhenReady {
+                            self.wzStatus = "内核偏移已就绪，正在连接王者荣耀"
+                            self.logmsg("(wz) 内核偏移已就绪，继续连接 smoba")
+                            self.wzAttach()
+                        } else {
+                            self.wzStatus = "内核环境已就绪，可以启动游戏"
+                            self.logmsg("(wz) 内核环境和偏移已就绪")
+                        }
                     } else {
                         self.wzStatus = "内核偏移获取失败"
                         self.logmsg("(wz) kernelcache 获取或偏移解析失败")
@@ -361,7 +370,44 @@ final class laramgr: ObservableObject {
             }
             return
         }
-        wzAttach()
+        if connectWhenReady {
+            wzAttach()
+        } else {
+            wzStatus = "内核环境已就绪，可以启动游戏"
+        }
+    }
+    func launchWZGame() {
+        guard dsready, hasOffsets else {
+            wzStatus = "请先完成内核初始化，再启动游戏"
+            initializeWZEnvironment()
+            return
+        }
+        guard let url = URL(string: "smoba1104466820://") else {
+            wzStatus = "王者荣耀启动地址无效"
+            return
+        }
+        setGameHUD(true)
+        UIApplication.shared.open(url, options: [:]) { [weak self] opened in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                if opened {
+                    self.wzStatus = "游戏已启动，等待 smoba 进程"
+                    self.scheduleWZAttachAfterLaunch(attempt: 0)
+                } else {
+                    self.wzStatus = "未能启动王者荣耀"
+                    self.logmsg("(wz) smoba URL scheme 启动失败")
+                }
+            }
+        }
+    }
+    private func scheduleWZAttachAfterLaunch(attempt: Int) {
+        guard !wzAttached, attempt < 15 else { return }
+        let delay = attempt == 0 ? 2.5 : 1.5
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+            guard let self, !self.wzAttached else { return }
+            if !self.wzRunning { self.wzAttach() }
+            self.scheduleWZAttachAfterLaunch(attempt: attempt + 1)
+        }
     }
     func wzAttach(process: String = "smoba") {
         guard !wzRunning, !wzAttached else { return }
@@ -486,6 +532,7 @@ final class laramgr: ObservableObject {
         wzShowMonsterTimer = false
         wzShowSoldier = false
         wzShowSoldierEntity = false
+        wzShowSkill = false
         var config = wzHUDConfig()
         wzhud_set_wz_config(&config)
     }
@@ -547,12 +594,13 @@ final class laramgr: ObservableObject {
         if wzShowMonsterTimer { flags |= UInt32(WZESP_SHOW_MONSTER_TIMER) }
         if wzShowSoldier { flags |= UInt32(WZESP_SHOW_SOLDIER) }
         if wzShowSoldierEntity { flags |= UInt32(WZESP_SHOW_SOLDIER_ENTITY) }
+        if wzShowSkill { flags |= UInt32(WZESP_SHOW_SKILL) }
         return flags & UInt32(WZESP_READ_FEATURES)
     }
     private func wzHUDConfig() -> wzesp_config_t {
         var config = wzesp_config_t()
         config.flags = wzFeatureFlags()
-        config.minimapSize = Float(min(max(wzMinimapSize, 60), 420))
+        config.minimapSize = Float(min(max(wzMinimapSize, 60), 520))
         config.minimapX = Float(min(max(wzMinimapX, -300), 300))
         config.minimapY = Float(min(max(wzMinimapY, -200), 200))
         config.rayWidth = Float(min(max(wzRayWidth, 0.5), 6))
@@ -582,6 +630,7 @@ final class laramgr: ObservableObject {
         case UInt32(WZESP_SHOW_MONSTER_TIMER): wzShowMonsterTimer = enabled
         case UInt32(WZESP_SHOW_SOLDIER): wzShowSoldier = enabled
         case UInt32(WZESP_SHOW_SOLDIER_ENTITY): wzShowSoldierEntity = enabled
+        case UInt32(WZESP_SHOW_SKILL): wzShowSkill = enabled
         default: return
         }
         var config = wzHUDConfig()
