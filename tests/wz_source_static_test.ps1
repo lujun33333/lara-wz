@@ -9,6 +9,13 @@ function Require-Text([string]$Path, [string]$Pattern, [string]$Message) {
     }
 }
 
+function Reject-Text([string]$Path, [string]$Pattern, [string]$Message) {
+    $content = Get-Content -LiteralPath (Join-Path $root $Path) -Raw
+    if ($content -match $Pattern) {
+        throw "FAIL: $Message ($Path)"
+    }
+}
+
 Require-Text 'lara/kexploit/wzmem.h' 'WZ_CAP_READ' '缺少统一读取 capability'
 Require-Text 'lara/kexploit/wzmem.h' 'WZ_CAP_WRITE' '缺少统一写入 capability'
 Require-Text 'lara/kexploit/wzmem.m' 'wz_try_mach_connect\(name, generation\).*return true' 'Mach task 未作为首选传输'
@@ -50,8 +57,9 @@ Require-Text 'lara/kexploit/WZHUDBridge.mm' 'preferredFramesPerSecond = 60' '游
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'WZESP_SHOW_AVATAR \| WZESP_SHOW_HEALTH \| WZESP_SHOW_RECALL' 'Core 默认绘制开关未同步'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'WZHUDMetalCanvas' '游戏画布未按 Core QXA110 使用独立 UIView 宿主'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'NSClassFromString\(@"CAMetalLayer"\)' '游戏画布未按 Core QXA110 使用 CAMetalLayer'
-Require-Text 'lara/kexploit/WZHUDBridge.mm' 'g_directInteractionEnabled = !gestureReady' 'HID 失败时没有本地交互回退'
-Require-Text 'lara/kexploit/WZHUDBridge.mm' 'directControlGesture:' '控制台动态开关没有直接触摸入口'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'convertPoint:point fromView:g_panel' '控制台嵌套控件仍混用局部与面板坐标'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'g_actionCallback' '原生 Core 控制台未接初始化和启动动作'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'handle_panel_tap_main\(panelPoint\)' '全局 HID 单指抬起未转发给控制台'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'IOHIDEventSystemClientCreate' '全局触摸未以 Core IOHID client 为首选'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'IOHIDEventSystemClientRegisterEventCallback' '全局触摸未注册 Core IOHID 回调'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'IOHIDEventSystemClientScheduleWithRunLoop' 'Core IOHID client 未调度到主运行循环'
@@ -60,38 +68,45 @@ Require-Text 'lara/kexploit/WZHUDBridge.mm' 'item\.auxiliaryCooldownSeconds' '�
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'URLForResource:@"heroatlas"' 'HUD 未接入王者英雄头像图集'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'error=%s' 'HUD 创建失败没有输出可诊断日志'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' '@interface WZHUDDrawWindow : UIWindow' '缺少 Core 绘制系统窗口'
-Require-Text 'lara/kexploit/WZHUDBridge.mm' '@interface WZHUDControlWindow : UIWindow' '缺少 Core 控制系统窗口'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'canBecomeKeyWindow \{ return NO; \}' 'HUD 窗口未同步 Core 非 key-window 语义'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' '_isSystemWindow \{ return YES; \}' 'HUD 窗口未同步 Core system-window 语义'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' '_isWindowServerHostingManaged \{ return NO; \}' 'HUD 窗口未同步 Core hosting 语义'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' '_shouldCreateContextAsSecure \{ return NO; \}' 'HUD 窗口未同步 Core context 语义'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' '_ignoresHitTest \{ return YES; \}' 'Core 绘制窗口未保持穿透'
-Require-Text 'lara/kexploit/WZHUDBridge.mm' '_ignoresHitTest \{ return NO; \}' 'Core 控制窗口未保持交互'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'UISceneActivationStateForegroundActive' 'HUD 未绑定前台活动场景'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'kWZHUDWindowLevel = 10000000\.0' 'HUD 层级未按 Core 2.2 QXA105 常量同步'
+Reject-Text 'lara/kexploit/WZHUDBridge.mm' 'WZHUDControlWindow' '仍保留会与 Core 单系统窗重复的第二控制窗口'
+Reject-Text 'lara/kexploit/WZHUDBridge.mm' 'FBSOrientationObserver' '仍使用 Core 2.2 未导入的 FBS 方向观察器'
 $hudSource = Get-Content -LiteralPath (Join-Path $root 'lara/kexploit/WZHUDBridge.mm') -Raw
 if ($hudSource -match 'SBSAccessibilityWindowHostingController') {
     throw 'FAIL: HUD 仍把非 Core 的 SBS 托管链混入主窗口路径'
 }
-Require-Text 'lara/views/app/WZControlPanelView.swift' 'Text\("CORE"\)' '缺少 Core 原版标题'
-Require-Text 'lara/views/app/WZControlPanelView.swift' '@State private var page: WZCorePage = \.home' '游戏控制台首屏未落到主页'
-Require-Text 'lara/views/app/WZControlPanelView.swift' '显示头像' '缺少英雄页功能'
-Require-Text 'lara/views/app/WZControlPanelView.swift' '显示野怪计时' '缺少兵野页功能'
-Require-Text 'lara/views/app/WZControlPanelView.swift' '显示英雄技能冷却' '缺少技能页功能'
-Require-Text 'lara/views/app/WZControlPanelView.swift' 'featureRow\("显示小地图"' '缺少独立小地图开关'
-Require-Text 'lara/views/app/WZControlPanelView.swift' 'featureRow\("地图调节显示"' '缺少地图调节显示开关'
-Require-Text 'lara/views/app/WZControlPanelView.swift' '地图坐标Y' '缺少调整页功能'
-Require-Text 'lara/views/app/WZControlPanelView.swift' '只读锁定' '缺少只读状态提示'
-Require-Text 'lara/views/app/WZControlPanelView.swift' 'writeFeatureRow\("自动瞄准"\)' '写入功能门禁未呈现在控制台'
-Require-Text 'lara/views/app/WZControlPanelView.swift' 'wzMeasuredFPS' '控制台仍显示硬编码帧率'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'g_titleLabel\.text = @"CORE\."' '缺少 Core 原版标题'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'static NSInteger g_selectedPage = 0' '游戏控制台首屏未落到主页'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' '@"显示头像"' '缺少英雄页功能'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' '@"显示野怪计时"' '缺少兵野页功能'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' '@"显示英雄技能冷却"' '缺少技能页功能'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' '@"显示小地图"' '缺少独立小地图开关'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' '@"地图调节显示"' '缺少地图调节显示开关'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' '@"地图坐标Y"' '缺少调整页功能'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' '@"只读锁定"' '缺少只读状态提示'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' '@"自动瞄准（写入）"' '写入功能门禁未呈现在控制台'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'g_renderFPS\.load\(\)' '控制台仍显示硬编码帧率'
 Require-Text 'lara/views/app/ContentView.swift' 'Image\("core-mountain"\)' '应用首屏未接 Core 山景卡片'
 Require-Text 'lara/views/app/ContentView.swift' '关闭菜单' '应用首屏未同步 Core 环形入口'
 Require-Text 'lara/views/app/ContentView.swift' 'mgr\.launchWZGame\(\)' '启动游戏入口未接王者启动链'
-Require-Text 'lara/views/app/ContentView.swift' 'WZControlPanelView\(' '应用首屏没有控制台导航入口'
+Reject-Text 'lara/views/app/ContentView.swift' 'WZControlPanelView\(' '应用首屏仍叠加第二套 SwiftUI 控制台'
+$duplicatePanel = Join-Path $root 'lara/views/app/WZControlPanelView.swift'
+if (Test-Path -LiteralPath $duplicatePanel) {
+    throw 'FAIL: 已停用的 SwiftUI 控制台副本仍留在构建源码中'
+}
+Reject-Text 'scripts/build_ipa_wz.sh' 'WZControlPanelView\.swift' '构建入口仍依赖已删除的重复控制台'
 if ((Get-Content -LiteralPath (Join-Path $root 'lara/views/app/ContentView.swift') -Raw) -match 'fullScreenCover') {
     throw 'FAIL: Core 控制台仍通过不透明 fullScreenCover 打开'
 }
 Require-Text 'lara/classes/laramgr.swift' 'func openWZControlPanel\(' '控制台入口未接初始化状态机'
-Require-Text 'lara/classes/laramgr.swift' 'requestGeometryUpdate' 'Core 控制台未主动请求横屏 geometry'
+Require-Text 'lara/classes/laramgr.swift' 'wzhud_set_panel_visible\(true\)' '控制台入口未打开单一 Core 系统面板'
+Reject-Text 'lara/classes/laramgr.swift' 'requestGeometryUpdate' '应用场景仍偏离 Core 2.2 的竖屏掩码并强制横屏'
 Require-Text '.github/workflows/build.yml' 'scripts/build_ipa_wz\.sh' 'CI 仍未使用王者构建入口'
 Require-Text 'scripts/build_ipa_wz.sh' 'PlistBuddy.*LARABuildSourceCommit' '构建产物未写入源码提交标识'
 

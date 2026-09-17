@@ -17,6 +17,8 @@ struct ContentView: View {
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 0) {
                         heroCard
+                            .frame(height: min(270,
+                                max(168, (proxy.size.width - 32) / 2.15)))
                         authorizationBar
                             .padding(.top, 10)
                         radialMenu
@@ -27,17 +29,6 @@ struct ContentView: View {
                     }
                     .padding(.horizontal, 16)
                     .padding(.top, max(proxy.safeAreaInsets.top + 16, 24))
-                }
-                if mgr.showWZControlPanel {
-                    WZControlPanelView(
-                        isPresented: Binding(
-                            get: { mgr.showWZControlPanel },
-                            set: { mgr.setWZControlPanelPresented($0) }
-                        )
-                    )
-                    .environmentObject(mgr)
-                    .transition(.opacity)
-                    .zIndex(10)
                 }
             }
         }
@@ -107,7 +98,6 @@ struct ContentView: View {
             }
         }
         .frame(maxWidth: .infinity)
-        .aspectRatio(2.15, contentMode: .fit)
         .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
         .overlay { RoundedRectangle(cornerRadius: 24).stroke(Color.white.opacity(0.20)) }
     }

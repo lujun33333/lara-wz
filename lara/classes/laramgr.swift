@@ -13,6 +13,23 @@ import notify
 import UIKit
 import WebKit
 
+private let wzHUDActionHandler: @convention(c) (Int32) -> Void = { action in
+    DispatchQueue.main.async {
+        switch action {
+        case 1:
+            if laramgr.shared.wzAttached {
+                laramgr.shared.wzDetach()
+            } else {
+                laramgr.shared.prepareWZEnvironment()
+            }
+        case 2:
+            laramgr.shared.launchWZGame()
+        default:
+            break
+        }
+    }
+}
+
 private func loadMutablePropertyListDictionary(from url: URL) throws -> NSMutableDictionary {
     let data = try Data(contentsOf: url)
     var format = PropertyListSerialization.PropertyListFormat.binary
@@ -153,7 +170,9 @@ final class laramgr: ObservableObject {
     static let fontpath = "/System/Library/Fonts/Core/SFUI.ttf"
     static let italicfontpath = "/System/Library/Fonts/Core/SFUIItalic.ttf"
     static let monofontpath = "/System/Library/Fonts/Core/SFUIMono.ttf"
-    init() {}
+    init() {
+        wzhud_set_action_callback(wzHUDActionHandler)
+    }
 
     struct AppInfo {
         let executable: String
@@ -358,18 +377,15 @@ final class laramgr: ObservableObject {
         prepareWZEnvironment(connectWhenReady: false)
     }
     func setWZControlPanelPresented(_ presented: Bool) {
-        showWZControlPanel = presented
-        let mask: UIInterfaceOrientationMask = presented ? .landscape : .portrait
-        guard #available(iOS 16.0, *),
-              let scene = UIApplication.shared.connectedScenes
-                .compactMap({ $0 as? UIWindowScene })
-                .first(where: { $0.activationState == .foregroundActive }) else {
-            return
-        }
-        scene.requestGeometryUpdate(
-            UIWindowScene.GeometryPreferences.iOS(interfaceOrientations: mask)
-        ) { [weak self] error in
-            self?.logmsg("(wz.ui) 界面方向切换失败: \(error.localizedDescription)")
+        // Core 2.2 keeps its application scene portrait (mask 2) and uses the
+        // system HUD window as the single control surface in both apps. Do not
+        // mount a second SwiftUI copy or rotate the LARA scene underneath it.
+        showWZControlPanel = false
+        if presented {
+            if !wzGameHUDEnabled { setGameHUD(true) }
+            wzhud_set_panel_visible(true)
+        } else {
+            wzhud_set_panel_visible(false)
         }
     }
     func openWZControlPanel() {
@@ -440,6 +456,9 @@ final class laramgr: ObservableObject {
             wzStatus = "王者荣耀启动地址无效"
             return
         }
+        // The Core system panel is already the controller. Keeping the SwiftUI
+        // copy mounted here caused the duplicated panels in device captures.
+        showWZControlPanel = false
         setGameHUD(true)
         UIApplication.shared.open(url, options: [:]) { [weak self] opened in
             DispatchQueue.main.async {

@@ -39,7 +39,6 @@ need_files=(
     "lara/heroatlas.bin"
     "lara/core-mountain.png"
     "lara/classes/laramgr.swift"
-    "lara/views/app/WZControlPanelView.swift"
 )
 for file in "${need_files[@]}"; do
     [[ -f "$ROOT/$file" ]] || die "缺文件：$file"
