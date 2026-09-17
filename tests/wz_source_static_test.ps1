@@ -59,7 +59,10 @@ Require-Text 'lara/kexploit/WZHUDBridge.mm' 'WZHUDMetalCanvas' '游戏画布未�
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'NSClassFromString\(@"CAMetalLayer"\)' '游戏画布未按 Core QXA110 使用 CAMetalLayer'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'convertPoint:point fromView:g_panel' '控制台嵌套控件仍混用局部与面板坐标'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'g_actionCallback' '原生 Core 控制台未接初始化和启动动作'
-Require-Text 'lara/kexploit/WZHUDBridge.mm' 'handle_panel_tap_main\(panelPoint\)' '全局 HID 单指抬起未转发给控制台'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'handle_panel_pointer_main\(panelPoint, pointerPhase\)' '全局 HID 完整触摸阶段未转发给控制台'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'WZHUDPointerPhaseBegan' '控制台缺少触摸按下阶段'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'WZHUDPointerPhaseMoved' '控制台缺少触摸移动阶段'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'move_float_button_main' 'Core 浮球没有拖动链'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'IOHIDEventSystemClientCreate' '全局触摸未以 Core IOHID client 为首选'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'IOHIDEventSystemClientRegisterEventCallback' '全局触摸未注册 Core IOHID 回调'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'IOHIDEventSystemClientScheduleWithRunLoop' 'Core IOHID client 未调度到主运行循环'
@@ -77,6 +80,12 @@ Require-Text 'lara/kexploit/WZHUDBridge.mm' 'UISceneActivationStateForegroundAct
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'kWZHUDWindowLevel = 10000000\.0' 'HUD 层级未按 Core 2.2 QXA105 常量同步'
 Reject-Text 'lara/kexploit/WZHUDBridge.mm' 'WZHUDControlWindow' '仍保留会与 Core 单系统窗重复的第二控制窗口'
 Reject-Text 'lara/kexploit/WZHUDBridge.mm' 'FBSOrientationObserver' '仍使用 Core 2.2 未导入的 FBS 方向观察器'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'UIApplicationDidEnterBackgroundNotification' 'HUD 未接应用后台生命周期'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'UISceneWillEnterForegroundNotification' 'HUD 未接 Scene 前台生命周期'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'viewWillTransitionToSize:' 'HUD 未接坐标空间变化后的重排'
+Require-Text 'lara/classes/laramgr.swift' 'wzhud_get_canvas_size\(&canvasWidth, &canvasHeight\)' '采集投影仍使用竖屏 UIScreen 尺寸'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'IOHIDEventSystemClientUnscheduleWithRunLoop' 'HUD 释放时未撤销 IOHID 调度'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'removeObserver:g_controller' 'HUD 释放时未移除生命周期观察'
 $hudSource = Get-Content -LiteralPath (Join-Path $root 'lara/kexploit/WZHUDBridge.mm') -Raw
 if ($hudSource -match 'SBSAccessibilityWindowHostingController') {
     throw 'FAIL: HUD 仍把非 Core 的 SBS 托管链混入主窗口路径'
@@ -90,8 +99,12 @@ Require-Text 'lara/kexploit/WZHUDBridge.mm' '@"显示小地图"' '缺少独立�
 Require-Text 'lara/kexploit/WZHUDBridge.mm' '@"地图调节显示"' '缺少地图调节显示开关'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' '@"地图坐标Y"' '缺少调整页功能'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' '@"只读锁定"' '缺少只读状态提示'
-Require-Text 'lara/kexploit/WZHUDBridge.mm' '@"自动瞄准（写入）"' '写入功能门禁未呈现在控制台'
+Reject-Text 'lara/kexploit/WZHUDBridge.mm' '描边增强（写入）|目标追踪（写入）|自动瞄准（写入）' '控制台仍混入原版没有的写入入口'
+Reject-Text 'lara/classes/laramgr.swift' 'requestWZWriteFeature|wzWriteGateReason' '状态层仍保留原版没有的写入占位功能'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'g_renderFPS\.load\(\)' '控制台仍显示硬编码帧率'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' '@"暗黑 \(Dark\)"' '控制台缺少可用暗色主题'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'wzCoreThemeColor' '主题色选择未持久化'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'detail\.frame = CGRectMake\(132, y' '主页状态值仍会被压缩成省略号'
 Require-Text 'lara/views/app/ContentView.swift' 'Image\("core-mountain"\)' '应用首屏未接 Core 山景卡片'
 Require-Text 'lara/views/app/ContentView.swift' '关闭菜单' '应用首屏未同步 Core 环形入口'
 Require-Text 'lara/views/app/ContentView.swift' 'mgr\.launchWZGame\(\)' '启动游戏入口未接王者启动链'
@@ -101,6 +114,8 @@ if (Test-Path -LiteralPath $duplicatePanel) {
     throw 'FAIL: 已停用的 SwiftUI 控制台副本仍留在构建源码中'
 }
 Reject-Text 'scripts/build_ipa_wz.sh' 'WZControlPanelView\.swift' '构建入口仍依赖已删除的重复控制台'
+Require-Text 'lara.xcodeproj/project.pbxproj' 'INFOPLIST_KEY_UIRequiresFullScreen = YES' '应用未按 Core 2.2 保持全屏场景'
+Reject-Text 'lara.xcodeproj/project.pbxproj' 'INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "[^\"]*Landscape' '应用主场景仍声明横屏方向'
 if ((Get-Content -LiteralPath (Join-Path $root 'lara/views/app/ContentView.swift') -Raw) -match 'fullScreenCover') {
     throw 'FAIL: Core 控制台仍通过不透明 fullScreenCover 打开'
 }

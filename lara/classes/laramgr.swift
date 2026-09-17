@@ -124,7 +124,6 @@ final class laramgr: ObservableObject {
     @Published var wzGameHUDStatus: String = "未启动"
     @Published var wzMeasuredFPS: Double = 0
     @Published var wzChainDiagnostic: String = "等待采集"
-    @Published var wzWriteGateReason: String = "当前王者配置仅验证了只读采集链"
     @Published var wzGameHUDPosition: Int = {
         let value = UserDefaults.standard.object(forKey: "wzGameHUDPosition") as? Int ?? 1
         return min(max(value, 0), 3)
@@ -747,14 +746,6 @@ final class laramgr: ObservableObject {
         }
         syncWZPresentation()
     }
-    func requestWZWriteFeature(_ title: String) {
-        let backend = wzAttached ? wzTransportName : "未连接"
-        wzWriteGateReason = wzAttached
-            ? "\(title)需要经过版本验证的写入配置；当前 \(backend) 会话保持只读锁定"
-            : "请先连接王者进程；未连接状态不会启用\(title)"
-        wzStatus = wzWriteGateReason
-        logmsg("(wz.write-gate) refused feature=\(title) transport=\(backend) profileWrite=disabled")
-    }
     private func applyGameHUDPresentation() {
         wzhud_set_presentation(
             Int32(wzGameHUDPosition),
@@ -788,7 +779,12 @@ final class laramgr: ObservableObject {
     }
     private func wzFrame() {
         let request = DispatchQueue.main.sync {
-            (wzEpoch, wzBase, wzAttached, UIScreen.main.bounds.size)
+            var canvasWidth = Double(UIScreen.main.bounds.width)
+            var canvasHeight = Double(UIScreen.main.bounds.height)
+            wzhud_get_canvas_size(&canvasWidth, &canvasHeight)
+            return (wzEpoch, wzBase, wzAttached,
+                    CGSize(width: CGFloat(canvasWidth),
+                           height: CGFloat(canvasHeight)))
         }
         guard request.2, request.1 != 0 else { return }
         guard wz_transport_ready() else {

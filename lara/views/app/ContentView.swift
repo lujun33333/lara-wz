@@ -18,7 +18,7 @@ struct ContentView: View {
                     VStack(spacing: 0) {
                         heroCard
                             .frame(height: min(270,
-                                max(168, (proxy.size.width - 32) / 2.15)))
+                                max(168, (min(proxy.size.width, 620) - 32) / 2.15)))
                         authorizationBar
                             .padding(.top, 10)
                         radialMenu
@@ -29,6 +29,8 @@ struct ContentView: View {
                     }
                     .padding(.horizontal, 16)
                     .padding(.top, max(proxy.safeAreaInsets.top + 16, 24))
+                    .frame(maxWidth: 620)
+                    .frame(maxWidth: .infinity)
                 }
             }
         }
