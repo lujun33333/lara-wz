@@ -32,7 +32,7 @@ struct ContentView: View {
                     WZControlPanelView(
                         isPresented: Binding(
                             get: { mgr.showWZControlPanel },
-                            set: { mgr.showWZControlPanel = $0 }
+                            set: { mgr.setWZControlPanelPresented($0) }
                         )
                     )
                     .environmentObject(mgr)

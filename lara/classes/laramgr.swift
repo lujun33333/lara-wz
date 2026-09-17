@@ -115,15 +115,15 @@ final class laramgr: ObservableObject {
     @Published var wzGameHUDLargeFont: Bool = UserDefaults.standard.bool(forKey: "wzGameHUDLargeFont")
     @Published var wzGameHUDSingleLine: Bool = UserDefaults.standard.bool(forKey: "wzGameHUDSingleLine")
     @Published var wzGameHUDInverted: Bool = UserDefaults.standard.bool(forKey: "wzGameHUDInverted")
-    @Published var wzShowAvatar: Bool = false
-    @Published var wzShowHealth: Bool = false
-    @Published var wzShowRecall: Bool = false
+    @Published var wzShowAvatar: Bool = true
+    @Published var wzShowHealth: Bool = true
+    @Published var wzShowRecall: Bool = true
     @Published var wzShowRay: Bool = false
     @Published var wzShowBox: Bool = false
     @Published var wzShowSelfVision: Bool = false
-    @Published var wzShowEnemyVision: Bool = false
-    @Published var wzShowMinimap: Bool = false
-    @Published var wzShowMapAdjustment: Bool = false
+    @Published var wzShowEnemyVision: Bool = true
+    @Published var wzShowMinimap: Bool = true
+    @Published var wzShowMapAdjustment: Bool = true
     @Published var wzShowMonster: Bool = false
     @Published var wzShowMonsterEntity: Bool = false
     @Published var wzShowMonsterTimer: Bool = false
@@ -357,9 +357,24 @@ final class laramgr: ObservableObject {
     func initializeWZEnvironment() {
         prepareWZEnvironment(connectWhenReady: false)
     }
+    func setWZControlPanelPresented(_ presented: Bool) {
+        showWZControlPanel = presented
+        let mask: UIInterfaceOrientationMask = presented ? .landscape : .portrait
+        guard #available(iOS 16.0, *),
+              let scene = UIApplication.shared.connectedScenes
+                .compactMap({ $0 as? UIWindowScene })
+                .first(where: { $0.activationState == .foregroundActive }) else {
+            return
+        }
+        scene.requestGeometryUpdate(
+            UIWindowScene.GeometryPreferences.iOS(interfaceOrientations: mask)
+        ) { [weak self] error in
+            self?.logmsg("(wz.ui) 界面方向切换失败: \(error.localizedDescription)")
+        }
+    }
     func openWZControlPanel() {
         if dsready && hasOffsets {
-            showWZControlPanel = true
+            setWZControlPanelPresented(true)
         } else {
             initializeWZEnvironment()
         }
@@ -398,7 +413,7 @@ final class laramgr: ObservableObject {
                         } else {
                             self.wzStatus = "内核环境已就绪，可以启动游戏"
                             self.logmsg("(wz) 内核环境和偏移已就绪")
-                            self.showWZControlPanel = true
+                            self.setWZControlPanelPresented(true)
                         }
                     } else {
                         self.wzStatus = "内核偏移获取失败"
@@ -412,7 +427,7 @@ final class laramgr: ObservableObject {
             wzAttach()
         } else {
             wzStatus = "内核环境已就绪，可以启动游戏"
-            showWZControlPanel = true
+            setWZControlPanelPresented(true)
         }
     }
     func launchWZGame() {
@@ -563,15 +578,15 @@ final class laramgr: ObservableObject {
     }
 
     private func resetWZFeatureState() {
-        wzShowAvatar = false
-        wzShowHealth = false
-        wzShowRecall = false
+        wzShowAvatar = true
+        wzShowHealth = true
+        wzShowRecall = true
         wzShowRay = false
         wzShowBox = false
         wzShowSelfVision = false
-        wzShowEnemyVision = false
-        wzShowMinimap = false
-        wzShowMapAdjustment = false
+        wzShowEnemyVision = true
+        wzShowMinimap = true
+        wzShowMapAdjustment = true
         wzShowMonster = false
         wzShowMonsterEntity = false
         wzShowMonsterTimer = false
@@ -593,11 +608,18 @@ final class laramgr: ObservableObject {
                 wzhud_set_transport_state(wzAttached, wzCanWrite, $0)
             }
             applyGameHUDPresentation()
+            // Core creates its system windows while the controller app is
+            // still foreground. Creating them only after smoba attaches means
+            // they belong to an already-backgrounded scene and never surface
+            // above the game.
+            let requested = wzhud_set_enabled(true)
+            wzGameHUDActive = requested && wzhud_is_enabled()
             if wzAttached {
-                wzhud_set_enabled(true)
                 updateGameHUD("王者已连接\n等待功能开关")
             } else {
-                wzGameHUDStatus = "王者未连接\n先连接进程"
+                wzGameHUDStatus = wzGameHUDActive
+                    ? "悬浮窗已准备\n等待王者进程"
+                    : "悬浮窗创建失败"
             }
         } else {
             hideGameHUD("已关闭")
