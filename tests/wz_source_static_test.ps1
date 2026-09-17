@@ -16,6 +16,7 @@ Require-Text 'lara/kexploit/wzmem.m' 'mach_port_deallocate\(mach_task_self\(\), 
 Require-Text 'lara/kexploit/wzmem.m' 'region walk 后目标身份失效' 'Mach region walk 后未复核目标身份'
 Require-Text 'lara/kexploit/wzmem.m' 'writing \? WZ_CAP_WRITE : WZ_CAP_READ' '读写未按 capability 门禁'
 Require-Text 'lara/kexploit/wzmem.m' 'wzmem_read_chunks' 'Mach 读取未使用部分完成契约'
+Require-Text 'lara/kexploit/wzmem.m' 'extern kern_return_t mach_vm_read_overwrite' 'iOS SDK 缺少 Mach 读取声明兜底'
 Require-Text 'lara/kexploit/wzmem.m' 'magic == MH_MAGIC_64' '内核 Mach-O 魔数自检被改名污染'
 Require-Text 'lara/classes/laramgr.swift' 'let canWrite = false' 'WZ 未保持版本级写权限 fail-closed'
 Require-Text 'lara/classes/laramgr.swift' 'wzhud_set_transport_state' '连接状态未传给控制面板'
