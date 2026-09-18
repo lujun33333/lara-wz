@@ -85,6 +85,8 @@ Require-Text 'lara/kexploit/WZHUDBridge.mm' 'g_active\.store\(true\);[\s\S]{0,18
 Reject-Text 'lara/kexploit/WZHUDBridge.mm' 'if \(!present_metal_frame_main\(\)\)[\s\S]{0,300}g_active\.store\(false\)' '首个 drawable 暂不可用时仍会关闭三窗口并阻断启动游戏'
 Reject-Text 'lara/kexploit/WZHUDBridge.mm' 'bool wzhud_is_enabled\(void\)[\s\S]{0,500}g_metalSurfaceHealthy\.load\(\)' 'HUD 活动状态仍错误依赖同步拿到首个 Metal drawable'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'g_metalFallbackLayer\.contents = ' '后台 fallback 图像未提交到保活 CALayer'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'BOOL fallbackVisible = captured && g_metalFallbackLayer[\s\S]*g_metalFallbackLayer\.hidden = NO[\s\S]*surface=fallback' 'Metal drawable 持续为空时仍未把 Core 普通图层切为可见 surface'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'g_fallbackPresentedFrames\.fetch_add\(1\)' '缺少 fallback surface 实际显示计数'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' '\[g_canvas addSubview:g_panel\]' 'Core 菜单视觉层仍未挂在持续提交的 Metal 画布'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' '\[controlRoot addSubview:g_panelInputProxy\]' 'Core 中层窗口缺少透明输入代理'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'g_panelInputProxy\.hidden = !visible' '视觉菜单与输入代理显示状态未同步'
