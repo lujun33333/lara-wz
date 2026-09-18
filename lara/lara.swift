@@ -18,6 +18,10 @@ final class LaraAppDelegate: UIResponder, UIApplicationDelegate {
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
+        guard wzhud_install_process_window_policy() else {
+            globallogger.log("(scene) Core process window policy unavailable before scene creation")
+            return false
+        }
         bootstrapLaraApplication()
         return true
     }

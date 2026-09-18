@@ -136,6 +136,7 @@ Require-Text 'lara/kexploit/WZHUDBridge.mm' '450 \* NSEC_PER_MSEC' '缺少 Core 
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'g_contextValidationBaseline' '缺少三窗口 context 基线'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'g_contextsStable\.store\(stable\)' 'context 复核结果未进入启动门禁'
 Require-Text 'lara/kexploit/WZHUDBridge.h' 'wzhud_prepare_game_launch' '启动链未暴露 Core context 准备接口'
+Require-Text 'lara/kexploit/WZHUDBridge.h' 'wzhud_install_process_window_policy' '缺少 Core 窗口全局策略启动接口'
 Require-Text 'lara/classes/laramgr.swift' 'guard wzhud_prepare_game_launch\(\)' '启动游戏未等待 Core context 准备'
 Require-Text 'lara/classes/laramgr.swift' 'wzhud_contexts_stable\(\)' '启动游戏未复核三窗口 context 稳定状态'
 Require-Text 'lara/classes/laramgr.swift' 'wzLaunchEpoch &\+= 1' '关闭 HUD 未取消待执行的 context 验证/游戏启动'
@@ -191,6 +192,7 @@ Require-Text 'lara/lara.swift' '@main[\s\S]*final class LaraAppDelegate: UIRespo
 Require-Text 'lara/lara.swift' '@objc\(LaraSceneDelegate\)[\s\S]*UIWindowSceneDelegate' '缺少显式单场景 SceneDelegate'
 Require-Text 'lara/lara.swift' 'UIWindow\(windowScene: windowScene\)' 'SceneDelegate 未直接创建主 UIWindow'
 Require-Text 'lara/lara.swift' 'UIHostingController\(rootView: LaraRootView\(\)\)' '现有 SwiftUI 页面未由 UIKit 场景承载'
+Require-Text 'lara/lara.swift' 'didFinishLaunchingWithOptions[\s\S]*wzhud_install_process_window_policy\(\)[\s\S]*bootstrapLaraApplication\(\)' 'Core 窗口全局策略未在 scene/window 创建前安装'
 
 $atlas = Join-Path $root 'lara/heroatlas.bin'
 if (-not (Test-Path -LiteralPath $atlas) -or (Get-Item -LiteralPath $atlas).Length -ne 2164890) {
