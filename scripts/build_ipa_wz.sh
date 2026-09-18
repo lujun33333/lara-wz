@@ -107,6 +107,8 @@ LC_ALL=C grep -a -q 'mach-task-readonly' "$BIN" \
     || die "最终二进制没有 Mach task 只读 backend"
 LC_ALL=C grep -a -q 'lara.wz.local-hud' "$BIN" \
     || die "最终二进制没有王者托管 HUD"
+LC_ALL=C grep -a -q 'visual=draw/input=control' "$BIN" \
+    || die "最终二进制没有 Core 绘制/输入分层"
 for marker in _setAllWindowsKeepContextInBackground: \
     setDisableUpdateMask: \
     _contextId; do
