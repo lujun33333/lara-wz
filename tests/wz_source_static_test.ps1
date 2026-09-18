@@ -64,8 +64,12 @@ Require-Text 'lara/kexploit/WZHUDBridge.mm' 'dlsym\([\s\S]*"MTLCreateSystemDefau
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'newCommandQueue' 'Core Metal 画布仍没有命令队列'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'nextDrawable' 'Core Metal 画布仍未获取 drawable'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'presentDrawable:drawable' 'Core Metal 画布仍未持续提交 drawable'
-Require-Text 'lara/kexploit/WZHUDBridge.mm' 'publish_fallback_snapshot_main' 'Core 后台未接离屏 fallback 图层'
-Require-Text 'lara/kexploit/WZHUDBridge.mm' 'renderInContext:context' 'UIKit 控制面板未进入后台 fallback 图像'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'update_fallback_snapshot_main' 'Core 后台未接离屏 fallback 图层'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'drawViewHierarchyInRect:destination' 'UIKit 控制面板未直接进入 fallback 图像'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'snapshot_has_visible_pixels' 'fallback 图像未检查真实像素内容'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'nonzeroSamples >= 8' '全透明 fallback 仍可能伪报成功'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'BOOL fallbackReady = update_fallback_snapshot_main\(NO\)' '启动游戏前未预生成可见 fallback 快照'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'Core fallback 快照为空' 'fallback 空白时仍可能继续启动游戏'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'g_metalFallbackLayer\.contents = ' '后台 fallback 图像未提交到保活 CALayer'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' '\[g_canvas addSubview:g_panel\]' 'Core 菜单视觉层仍未挂在持续提交的 Metal 画布'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' '\[controlRoot addSubview:g_panelInputProxy\]' 'Core 中层窗口缺少透明输入代理'
@@ -162,7 +166,10 @@ if (Test-Path -LiteralPath $duplicatePanel) {
 }
 Reject-Text 'scripts/build_ipa_wz.sh' 'WZControlPanelView\.swift' '构建入口仍依赖已删除的重复控制台'
 Require-Text 'lara.xcodeproj/project.pbxproj' 'INFOPLIST_KEY_UIRequiresFullScreen = YES' '应用未按 Core 2.2 保持全屏场景'
+Require-Text 'lara.xcodeproj/project.pbxproj' 'INFOPLIST_KEY_UIApplicationSceneManifest_Generation = NO' '构建仍会覆盖 Core 单场景 manifest'
 Require-Text 'lara/Info.plist' '<string>audio</string>' '应用未保留 Core 后台音频模式'
+Require-Text 'lara/Info.plist' '<key>UIApplicationSupportsMultipleScenes</key>[\s\S]*<false/>' '应用未对齐 Core 单场景模式'
+Require-Text 'lara/Info.plist' '<key>UISceneDelegateClassName</key>[\s\S]*<string>LaraSceneDelegate</string>' '应用未显式绑定 UIKit SceneDelegate'
 Reject-Text 'lara.xcodeproj/project.pbxproj' 'INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "[^\"]*Landscape' '应用主场景仍声明横屏方向'
 if ((Get-Content -LiteralPath (Join-Path $root 'lara/views/app/ContentView.swift') -Raw) -match 'fullScreenCover') {
     throw 'FAIL: Core 控制台仍通过不透明 fullScreenCover 打开'
@@ -177,6 +184,13 @@ $appSource = Get-Content -LiteralPath (Join-Path $root 'lara/lara.swift') -Raw
 if ($appSource -match 'TabView\s*\(') {
     throw 'FAIL: 应用入口仍保留旧 TabView 外壳'
 }
+if ($appSource -match 'struct\s+lara\s*:\s*App|WindowGroup\s*\{') {
+    throw 'FAIL: 应用入口仍由 SwiftUI 隐式多场景托管'
+}
+Require-Text 'lara/lara.swift' '@main[\s\S]*final class LaraAppDelegate: UIResponder, UIApplicationDelegate' '缺少 Core 同款 UIKit AppDelegate 入口'
+Require-Text 'lara/lara.swift' '@objc\(LaraSceneDelegate\)[\s\S]*UIWindowSceneDelegate' '缺少显式单场景 SceneDelegate'
+Require-Text 'lara/lara.swift' 'UIWindow\(windowScene: windowScene\)' 'SceneDelegate 未直接创建主 UIWindow'
+Require-Text 'lara/lara.swift' 'UIHostingController\(rootView: LaraRootView\(\)\)' '现有 SwiftUI 页面未由 UIKit 场景承载'
 
 $atlas = Join-Path $root 'lara/heroatlas.bin'
 if (-not (Test-Path -LiteralPath $atlas) -or (Get-Item -LiteralPath $atlas).Length -ne 2164890) {
