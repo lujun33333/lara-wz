@@ -563,7 +563,11 @@ final class laramgr: ObservableObject {
                     self.wzGameHUDSessionArmed = true
                     UserDefaults.standard.set(false, forKey: "wzGameHUDEnabled")
                     self.applyGameHUDPresentation()
-                    let requested = wzhud_set_enabled(true)
+                    // Core creates QXA105/QXA110 exactly once from the scene
+                    // controller. A game-memory attach only updates transport
+                    // and snapshot state; it never re-enters window creation
+                    // after smoba has foregrounded.
+                    let requested = wzhud_is_enabled()
                     self.startWZLoop()
                     self.updateGameHUD("王者已连接\n等待功能开关")
                     let hudError = String(cString: wzhud_last_error())

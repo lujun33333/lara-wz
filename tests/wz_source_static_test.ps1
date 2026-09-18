@@ -16,6 +16,14 @@ function Reject-Text([string]$Path, [string]$Pattern, [string]$Message) {
     }
 }
 
+function Require-Count([string]$Path, [string]$Pattern, [int]$Count, [string]$Message) {
+    $content = Get-Content -LiteralPath (Join-Path $root $Path) -Raw
+    $actual = [regex]::Matches($content, $Pattern).Count
+    if ($actual -ne $Count) {
+        throw "FAIL: $Message expected=$Count actual=$actual ($Path)"
+    }
+}
+
 Require-Text 'lara/kexploit/wzmem.h' 'WZ_CAP_READ' '缺少统一读取 capability'
 Require-Text 'lara/kexploit/wzmem.h' 'WZ_CAP_WRITE' '缺少统一写入 capability'
 Require-Text 'lara/kexploit/wzmem.m' 'wz_try_mach_connect\(name, generation\).*return true' 'Mach task 未作为首选传输'
@@ -43,8 +51,8 @@ Require-Text 'lara/classes/laramgr.swift' 'wzhud_set_transport_state' '连接状
 Require-Text 'lara/classes/laramgr.swift' 'func prepareWZEnvironment\(' 'Core 初始化页未接完整环境准备链'
 Require-Text 'lara/classes/laramgr.swift' 'func wzCollectorPagesReadable\(' '连接成功前未验证王者关键采集页'
 Require-Text 'lara/classes/laramgr.swift' 'imageValid && profileReadable' '采集页失败仍可能伪装连接成功'
-Require-Text 'lara/classes/laramgr.swift' 'wzGameHUDSessionArmed = true[\s\S]*wzhud_set_enabled\(true\)' '连接成功后未自动启动游戏内 HUD'
-Require-Text 'lara/classes/laramgr.swift' 'Core creates its system windows while the controller app is[\s\S]*let requested = wzhud_set_enabled\(true\)' 'HUD 仍在切到游戏后才创建窗口'
+Require-Text 'lara/classes/laramgr.swift' 'showWZControlPanel = false\s*setGameHUD\(true\)[\s\S]{0,500}wzhud_prepare_game_launch\(\)' '游戏启动前未先创建并验证 Core HUD'
+Require-Text 'lara/classes/laramgr.swift' 'func setGameHUD\(_ enabled: Bool\)[\s\S]{0,1400}let requested = wzhud_set_enabled\(true\)' '显式 HUD 开关未保留唯一窗口创建入口'
 Require-Text 'lara/kexploit/wzesp.h' 'WZESP_SHOW_MAP_ADJUSTMENT' '缺少独立地图调节显示开关'
 Require-Text 'lara/kexploit/wzesp.h' 'WZESP_SHOW_SKILL' '缺少技能页读取开关'
 Require-Text 'lara/kexploit/wz/YuanbaoCollector.mm' '_logicVisible=0x505, _meshVisible=0x506, _inCamera=0x507' '缺少王者只读视野字段链'
@@ -55,11 +63,14 @@ Require-Text 'lara/kexploit/WZHUDBridge.mm' 'g_wzPortraitRecallRings' '回城动
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'monster_marker_color\(item\.monsterSubtype\)' '野怪分类样式未接入'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' '10000 \+ \(NSInteger\)__builtin_ctz\(flag\)' 'HUD 高位开关仍可能与滑块 tag 冲突'
 Require-Text 'lara/kexploit/wz/WZYuanbaoDrawPolicy.h' 'kRecallSpinRadiansPerSecond = 7\.854f' '未同步元宝回城旋转参数'
-Require-Text 'lara/kexploit/WZHUDBridge.mm' 'g_wzSnapshotGeneration' '并发断开可能吞掉最后清空帧'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'snapshotGeneration = g_wzSnapshotGeneration\.load\(\)[\s\S]*apply_wz_snapshot_main[\s\S]*snapshotGeneration != g_wzSnapshotGeneration\.load\(\)[\s\S]*hide_wz_items_main\(\)' '并发断开可能让旧快照覆盖最后清空帧'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'preferredFramesPerSecond = 60' '游戏绘制未接 Core 2.2 的 60 FPS 帧驱动'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'WZESP_SHOW_AVATAR \| WZESP_SHOW_HEALTH \| WZESP_SHOW_RECALL' 'Core 默认绘制开关未同步'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'WZHUDMetalCanvas' '游戏画布未按 Core QXA110 使用独立 UIView 宿主'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'NSClassFromString\(@"CAMetalLayer"\)' '游戏画布未按 Core QXA110 使用 CAMetalLayer'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'g_canvas\.autoresizingMask = UIViewAutoresizingFlexibleWidth \|[\s\S]*UIViewAutoresizingFlexibleHeight' 'Core QXA110 视觉层缺少宽高自动调整 mask=18'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'g_canvas\.multipleTouchEnabled = NO' 'Core QXA110 视觉层未关闭多点触摸'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'CGFloat scale = MIN\(1\.0, MIN\(CGRectGetWidth\(bounds\) / 900\.0,[\s\S]*CGRectGetHeight\(bounds\) / 600\.0\)\)' '控制台仍未按 Core 固定 900x600 画布使用完整逻辑边界缩放'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'dlsym\([\s\S]*"MTLCreateSystemDefaultDevice"' 'Core Metal 画布仍没有真实设备'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'newCommandQueue' 'Core Metal 画布仍没有命令队列'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'nextDrawable' 'Core Metal 画布仍未获取 drawable'
@@ -75,6 +86,9 @@ Require-Text 'lara/kexploit/WZHUDBridge.mm' '\[g_canvas addSubview:g_panel\]' 'C
 Require-Text 'lara/kexploit/WZHUDBridge.mm' '\[controlRoot addSubview:g_panelInputProxy\]' 'Core 中层窗口缺少透明输入代理'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'g_panelInputProxy\.hidden = !visible' '视觉菜单与输入代理显示状态未同步'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'colorWithWhite:0\.0 alpha:0\.012' 'Core 输入层缺少保持 context 的极低透明度像素'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' '@implementation WZHUDTouchProxy[\s\S]*touchesBegan:[\s\S]*touchesMoved:[\s\S]*touchesEnded:[\s\S]*touchesCancelled:' '输入代理仍使用手势猜测，未对齐 Core QXA112 原始触摸链'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'g_panelInputProxy\.multipleTouchEnabled = NO' 'Core QXA112 输入代理未关闭多点触摸'
+Reject-Text 'lara/kexploit/WZHUDBridge.mm' 'directControlGesture:' '视觉面板仍挂载重复手势链，可能与 QXA112 原始触摸重复触发'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'g_window\.userInteractionEnabled = NO' 'Core 最低绘制窗口仍参与 UIKit 命中'
 Reject-Text 'lara/kexploit/WZHUDBridge.mm' '\[(root|controlRoot) addSubview:g_panel\]' '菜单视觉层仍错误放在中间控制窗口'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'convertPoint:point fromView:g_panel' '控制台嵌套控件仍混用局部与面板坐标'
@@ -83,6 +97,12 @@ Require-Text 'lara/kexploit/WZHUDBridge.mm' 'handle_panel_pointer_main\(panelPoi
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'WZHUDPointerPhaseBegan' '控制台缺少触摸按下阶段'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'WZHUDPointerPhaseMoved' '控制台缺少触摸移动阶段'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'move_float_button_main' 'Core 浮球没有拖动链'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'g_floatButton = \[UIButton buttonWithType:UIButtonTypeCustom\]' 'Core 浮球仍不是原版 UIButton'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'UIControlEventTouchUpInside' 'Core 浮球点击未使用 touch-up-inside'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'floatPan\.maximumNumberOfTouches = 1' 'Core 浮球拖动未限制为单指'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'setObject:NSStringFromCGPoint\(g_floatSavedCenter\)' '浮球位置未按 Core CGPoint 字符串持久化'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'g_floatButton\.hidden = NO' '菜单显示时仍会隐藏 Core 顶层浮球'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'sceneActive \|\| g_contextsStable\.load\(\)' '浮球和菜单输入未按 Core 前台或 context 稳定状态门控'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'IOHIDEventSystemClientCreate' '全局触摸未以 Core IOHID client 为首选'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'IOHIDEventSystemClientRegisterEventCallback' '全局触摸未注册 Core IOHID 回调'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'IOHIDEventSystemClientScheduleWithRunLoop' 'Core IOHID client 未调度到主运行循环'
@@ -104,6 +124,7 @@ Require-Text 'lara/kexploit/WZHUDBridge.mm' 'return \[super hitTest:point withEv
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'Class windowClass = UIWindow\.class' 'Core 后台窗口策略仍发给错误接收者'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'objc_msgSend\)\(windowClass, selector, NO\)' 'Core 后台窗口策略参数未对齐原版 0'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'setDisableUpdateMask:' '缺少 Core 后台图层保活接口'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'CALayer \*layers\[\] = \{[\s\S]*g_metalFallbackLayer, g_canvas\.layer, g_floatButton\.layer,[\s\S]*\};' '后台图层 mask 未限制为 Core 的渲染层、视觉层和浮球层'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'configure_background_layer_masks_main\(0x12\)' 'HUD 创建和恢复时未启用 Core 图层保活掩码'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'configure_background_layer_masks_main\(0\)' 'HUD 销毁时未清理 Core 图层保活掩码'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'g_backgroundLayerMaskReady\.load\(\)' '图层保活失败后仍会伪报 HUD 已运行'
@@ -127,6 +148,8 @@ Reject-Text 'lara/kexploit/WZHUDBridge.mm' 'SBSAccessibilityWindowHostingControl
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'refresh_window_context_ids_main' '缺少 Core 三窗口 context 诊断'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' '\[CATransaction flush\]' '窗口切后台前没有完成 Core 显式事务刷新'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'movingToBackground' 'HUD 未区分 Core 前后台窗口生命周期'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'lifecycle=foreground contextsPreserved=' '缺少前台 context 保留/重验诊断'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'BOOL contextsPreserved = wasStable && presented[\s\S]*schedule_context_validation_main\(\);' '前台恢复仍无条件清空 Core context，而非按 ID 变化重验'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'BOOL keepRendering = g_requested\.load\(\) && g_contextsStable\.load\(\)' '后台渲染未按 HUD 请求和 context 健康状态门控'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'g_displayLink\.paused = !keepRendering' '后台仍无条件暂停 Core Metal 提交'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'metal background presented frames=' '缺少后台 Metal drawable 提交诊断'
@@ -135,6 +158,11 @@ Reject-Text 'lara/kexploit/WZHUDBridge.mm' 'g_backgroundRenderTimer' '错误引�
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'present_snapshot_metal_frame_main' '后台仍未把 UI 像素提交到 Metal drawable'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'copyFromTexture:[\s\S]*presentDrawable:[\s\S]*commit' '后台 Metal 路径未执行 texture blit/present/commit'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'BOOL published = captured && present_snapshot_metal_frame_main\(\);[\s\S]*if \(!published\)[\s\S]*return NO;[\s\S]*g_metalPresentedFrames\.fetch_add\(1\)' '后台 presented 计数未受真实 drawable 提交结果门禁'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'BOOL retainedSurface = g_metalSurfaceHealthy\.load\(\) &&[\s\S]*g_contextsStable\.load\(\);[\s\S]*if \(retainedSurface\) return YES;' '后台 drawable 暂不可用时未保留最后一次前台提交表面'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'enable=idempotent active=1' '游戏 attach 后重复启用仍会在后台重建 HUD'
+Reject-Text 'lara/kexploit/WZHUDBridge.mm' 'MTLLoadActionClear' '前台仍向 Core Metal drawable 提交透明帧而非菜单像素'
+Require-Count 'lara/classes/laramgr.swift' 'wzhud_set_enabled\(true\)' 1 'HUD 创建入口未限制在显式 setGameHUD，采集 attach 仍会重复创建'
+Require-Text 'lara/classes/laramgr.swift' 'let requested = wzhud_is_enabled\(\)[\s\S]*self\.startWZLoop\(\)' '采集 attach 未只读取既有 HUD 状态'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'NSClassFromString\(@"CMMotionManager"\)' '缺少 Core 后台运动方向源'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'startDeviceMotionUpdatesToQueue:withHandler:' '未启动 Core 同款 device-motion 更新'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'setDeviceMotionUpdateInterval:[\s\S]*0\.2' 'device-motion 更新间隔未对齐 Core 0.2 秒'
@@ -144,6 +172,7 @@ Require-Text 'lara/kexploit/WZHUDBridge.mm' 'UIInterfaceOrientationLandscapeLeft
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'screen\.fixedCoordinateSpace\.bounds' '窗口物理边界未对齐 Core QXA105.qm535'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'stopDeviceMotionUpdates' 'HUD 释放时未停止 CoreMotion'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'g_orientationGeneration\.fetch_add\(1\)' '方向回调缺少断开代际失效保护'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'suspend_orientation_tracking_main\(\);[\s\S]*450 \* NSEC_PER_MSEC[\s\S]*install_orientation_observer_main\(\);' '450ms context 注册窗口未对齐 Core 的 qm556/qm555 方向冻结链'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'apply_orientation_main[\s\S]*\[CATransaction commit\][\s\S]*\[CATransaction flush\][\s\S]*refresh_window_context_ids_main\(\)' '方向更新未对齐 Core 的布局提交与 context 刷新链'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' '450 \* NSEC_PER_MSEC' '缺少 Core context 450ms 稳定等待'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'g_contextValidationBaseline' '缺少三窗口 context 基线'
