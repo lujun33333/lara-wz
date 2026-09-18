@@ -107,6 +107,12 @@ LC_ALL=C grep -a -q 'mach-task-readonly' "$BIN" \
     || die "最终二进制没有 Mach task 只读 backend"
 LC_ALL=C grep -a -q 'lara.wz.local-hud' "$BIN" \
     || die "最终二进制没有王者托管 HUD"
+for marker in SBSAccessibilityWindowHostingController \
+    registerWindowWithContextID:atLevel: \
+    unregisterWindowWithContextID:atLevel:; do
+    LC_ALL=C grep -a -q "$marker" "$BIN" \
+        || die "最终二进制缺少 SpringBoard 托管标记：$marker"
+done
 [[ -f "$SRC_APP/heroatlas.bin" ]] \
     || die "最终 App 未包含英雄头像图集"
 [[ -f "$SRC_APP/core-mountain.png" ]] \

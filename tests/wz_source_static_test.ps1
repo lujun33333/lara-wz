@@ -103,9 +103,12 @@ Require-Text 'lara/classes/laramgr.swift' 'wzhud_get_canvas_size\(&canvasWidth, 
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'IOHIDEventSystemClientUnscheduleWithRunLoop' 'HUD 释放时未撤销 IOHID 调度'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'removeObserver:g_controller' 'HUD 释放时未移除生命周期观察'
 $hudSource = Get-Content -LiteralPath (Join-Path $root 'lara/kexploit/WZHUDBridge.mm') -Raw
-if ($hudSource -match 'SBSAccessibilityWindowHostingController') {
-    throw 'FAIL: HUD 仍把非 Core 的 SBS 托管链混入主窗口路径'
-}
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'SBSAccessibilityWindowHostingController' '游戏 HUD 未接 AX 的 SpringBoard 托管类'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'registerWindowWithContextID:atLevel:' '游戏 HUD 未注册窗口 context'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'unregisterWindowWithContextID:atLevel:' 'HUD 销毁时未注销窗口 context'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'signatureWithObjCTypes:"v@:Id"' 'SpringBoard 托管调用 ABI 不正确'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'g_hostedWindowsReady\.load\(\)' 'SpringBoard 托管失败后仍会伪报 HUD 已运行'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'contexts=%u/%u/%u' '三窗口 context 缺少真机诊断'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'g_titleLabel\.text = @"CORE\."' '缺少 Core 原版标题'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'static NSInteger g_selectedPage = 0' '游戏控制台首屏未落到主页'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' '@"显示头像"' '缺少英雄页功能'
