@@ -165,6 +165,11 @@ private func bootstrapLaraApplication() {
 private func handleLaraBackgroundTransition() {
     let mgr = laramgr.shared
     guard mgr.rcready, !laraBackgroundCleanupInFlight else { return }
+    // The three hosted contexts are owned by objects inside SpringBoard.
+    // Destroying RemoteCall while registration/hosting is active loses the
+    // only safe path for Core's unregister and protected-data recovery chain.
+    if mgr.wzSpringBoardHostingInFlight ||
+        wzhud_springboard_hosting_ready() { return }
     let keepSpringBoardRemoteCallAlive = UserDefaults.standard.bool(
         forKey: "keepSpringBoardRemoteCallAliveIOS16"
     )

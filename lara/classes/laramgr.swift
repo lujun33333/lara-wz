@@ -302,6 +302,15 @@ final class laramgr: ObservableObject {
     private var wzLastResult = ""
     private var wzLastResultTime = Date.distantPast
     private var wzTickNumber: UInt64 = 0
+    private var wzHostingInFlight = false
+    private var wzHostingShutdownInFlight = false
+    private var wzOwnsSpringBoardRemoteCall = false
+    private var wzRemoteCallInitEpoch: UInt64?
+    private var wzRemoteCleanupPending = false
+    var wzSpringBoardHostingInFlight: Bool {
+        wzHostingInFlight || wzHostingShutdownInFlight ||
+            wzRemoteCallInitEpoch != nil || wzRemoteCleanupPending
+    }
     private var wzLastHUDText = ""
     private var wzLastHUDUpdateTime = Date.distantPast
     private var wzLastHUDControlFlags = UInt32.max
@@ -491,7 +500,124 @@ final class laramgr: ObservableObject {
             }
             return
         }
-        logmsg("(wz.hud) context validation passed; opening smoba")
+        logmsg("(wz.hud) context validation passed; preparing SpringBoard hosting")
+        prepareWZSpringBoardHosting(url: url, epoch: epoch, attempt: 0)
+    }
+
+    private func prepareWZSpringBoardHosting(
+        url: URL,
+        epoch: UInt64,
+        attempt: Int
+    ) {
+        guard epoch == wzLaunchEpoch else { return }
+        if wzhud_springboard_hosting_ready() {
+            openWZGameURL(url, epoch: epoch)
+            return
+        }
+        if rcready, let process = sbProc {
+            registerWZSpringBoardHosting(
+                process: process, url: url, epoch: epoch
+            )
+            return
+        }
+        if rcrunning {
+            guard attempt < 100 else {
+                wzStatus = "SpringBoard RemoteCall 初始化超时"
+                logmsg("(wz.hud) SpringBoard RemoteCall wait timeout")
+                return
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                [weak self] in
+                self?.prepareWZSpringBoardHosting(
+                    url: url, epoch: epoch, attempt: attempt + 1
+                )
+            }
+            return
+        }
+
+        wzStatus = "正在连接 SpringBoard 并托管三窗口"
+        wzRemoteCallInitEpoch = epoch
+        rcinit(process: "SpringBoard", migbypass: false) { [weak self] success in
+            guard let self else { return }
+            let ownsRequest = self.wzRemoteCallInitEpoch == epoch
+            if ownsRequest {
+                self.wzRemoteCallInitEpoch = nil
+                self.wzOwnsSpringBoardRemoteCall = success
+            }
+            guard epoch == self.wzLaunchEpoch else {
+                self.releaseWZSpringBoardRemoteCallIfOwned()
+                return
+            }
+            guard success, let process = self.sbProc else {
+                let detail = self.rcLastError ?? "unknown"
+                self.wzStatus = "SpringBoard RemoteCall 初始化失败：\(detail)"
+                self.wzGameHUDActive = false
+                self.logmsg("(wz.hud) SpringBoard RemoteCall init failed error=\(detail)")
+                return
+            }
+            self.registerWZSpringBoardHosting(
+                process: process, url: url, epoch: epoch
+            )
+        }
+    }
+
+    private func registerWZSpringBoardHosting(
+        process: RemoteCall,
+        url: URL,
+        epoch: UInt64
+    ) {
+        guard epoch == wzLaunchEpoch else { return }
+        guard !wzHostingInFlight else {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                [weak self] in
+                self?.prepareWZSpringBoardHosting(
+                    url: url, epoch: epoch, attempt: 0
+                )
+            }
+            return
+        }
+        wzHostingInFlight = true
+        wzStatus = "正在向 SpringBoard 注册 Core 三窗口"
+        wzWorker.async { [weak self, process] in
+            let hosted = wzhud_register_springboard_hosting(process)
+            let reason = String(cString: wzhud_last_error())
+            let cleanupComplete = hosted ||
+                wzhud_unregister_springboard_hosting(process)
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.wzHostingInFlight = false
+                guard epoch == self.wzLaunchEpoch else { return }
+                guard hosted && wzhud_springboard_hosting_ready() else {
+                    self.wzGameHUDActive = false
+                    self.wzRemoteCleanupPending = !cleanupComplete
+                    self.wzStatus = reason.isEmpty
+                        ? "SpringBoard 三窗口托管失败"
+                        : reason
+                    self.logmsg("(wz.hud) SpringBoard hosting failed error=\(reason)")
+                    if cleanupComplete {
+                        self.releaseWZSpringBoardRemoteCallIfOwned()
+                    } else {
+                        self.logmsg("(wz.hud) remote cleanup pending; keeping RemoteCall alive")
+                    }
+                    return
+                }
+                self.wzRemoteCleanupPending = false
+                self.wzGameHUDActive = wzhud_is_enabled()
+                self.logmsg("(wz.hud) SpringBoard hosting ready; opening smoba")
+                self.openWZGameURL(url, epoch: epoch)
+            }
+        }
+    }
+
+    private func openWZGameURL(_ url: URL, epoch: UInt64) {
+        guard epoch == wzLaunchEpoch,
+              wzhud_contexts_stable(),
+              wzhud_springboard_hosting_ready() else {
+            wzStatus = "Core 三窗口托管状态已失效，已取消启动"
+            wzGameHUDActive = false
+            logmsg("(wz.hud) launch cancelled because hosted contexts are no longer valid")
+            return
+        }
         UIApplication.shared.open(url, options: [:]) { [weak self] opened in
             DispatchQueue.main.async {
                 guard let self else { return }
@@ -502,7 +628,8 @@ final class laramgr: ObservableObject {
                 } else {
                     self.wzStatus = "未能启动王者荣耀"
                     self.logmsg("(wz) smoba URL scheme 启动失败")
-                    self.setGameHUD(true)
+                    self.wzLaunchEpoch &+= 1
+                    self.hideGameHUD("游戏启动失败，已注销悬浮窗")
                 }
             }
         }
@@ -806,9 +933,56 @@ final class laramgr: ObservableObject {
     private func hideGameHUD(_ status: String) {
         wzGameHUDEnabled = false
         wzGameHUDSessionArmed = false
-        wzhud_set_enabled(false)
         wzGameHUDActive = false
         wzGameHUDStatus = status
+        wzhud_cancel_pending_hosting()
+        let needsRemoteCleanup = wzHostingInFlight ||
+            wzRemoteCleanupPending || wzhud_springboard_hosting_ready()
+        if wzHostingShutdownInFlight {
+            wzGameHUDStatus = "正在注销 SpringBoard 托管"
+            return
+        }
+        guard needsRemoteCleanup,
+              rcready,
+              let process = sbProc else {
+            wzhud_set_enabled(false)
+            if !needsRemoteCleanup {
+                releaseWZSpringBoardRemoteCallIfOwned()
+            } else {
+                let reason = "SpringBoard 托管仍存在但 RemoteCall 不可用"
+                wzGameHUDStatus = reason
+                logmsg("(wz.hud) \(reason)")
+            }
+            return
+        }
+
+        wzHostingShutdownInFlight = true
+        wzWorker.async { [weak self, process] in
+            let removed = wzhud_unregister_springboard_hosting(process)
+            let reason = String(cString: wzhud_last_error())
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.wzHostingShutdownInFlight = false
+                wzhud_set_enabled(false)
+                if removed {
+                    self.wzRemoteCleanupPending = false
+                    self.logmsg("(wz.hud) SpringBoard hosting unregistered")
+                    self.releaseWZSpringBoardRemoteCallIfOwned()
+                } else {
+                    self.wzRemoteCleanupPending = true
+                    self.wzGameHUDStatus = reason.isEmpty
+                        ? "SpringBoard 托管注销不完整"
+                        : reason
+                    self.logmsg("(wz.hud) SpringBoard hosting unregister failed error=\(reason)")
+                }
+            }
+        }
+    }
+
+    private func releaseWZSpringBoardRemoteCallIfOwned() {
+        guard wzOwnsSpringBoardRemoteCall else { return }
+        wzOwnsSpringBoardRemoteCall = false
+        rcdestroy()
     }
     private func startWZLoop() {
         guard wzTimer == nil else { return }
@@ -1628,7 +1802,15 @@ final class laramgr: ObservableObject {
     
     #if !DISABLE_REMOTECALL
     func rcinit(process: String, migbypass: Bool = false, completion: ((Bool) -> Void)? = nil) {
-        guard dsready, !rcready else {
+        guard dsready else {
+            completion?(false)
+            return
+        }
+        if rcready {
+            completion?(sbProc != nil)
+            return
+        }
+        guard !rcrunning else {
             completion?(false)
             return
         }
@@ -1638,11 +1820,15 @@ final class laramgr: ObservableObject {
         logmsg("正在初始化远程调用 \(process)...")
         
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            self?.sbProc = RemoteCall(process: process, useMigFilterBypass: migbypass)
+            let remoteProcess = RemoteCall(
+                process: process,
+                useMigFilterBypass: migbypass
+            )
             
             DispatchQueue.main.async {
                 guard let self = self else { return }
-                let success = self.sbProc != nil
+                self.sbProc = remoteProcess
+                let success = remoteProcess != nil
                 if success {
                     self.logmsg("远程调用已在 \(process) 上初始化")
                     self.rcLastError = nil
@@ -1702,15 +1888,28 @@ final class laramgr: ObservableObject {
     }
     
     func rcdestroy(completion: (() -> Void)? = nil) {
-        guard rcready else { return }
+        guard !wzSpringBoardHostingInFlight,
+              !wzhud_springboard_hosting_ready() else {
+            logmsg("拒绝销毁：SpringBoard 托管仍在使用 RemoteCall")
+            completion?()
+            return
+        }
+        guard rcready || sbProc != nil else {
+            completion?()
+            return
+        }
         
         logmsg("正在销毁远程调用会话...")
         rcready = false
+        rcrunning = true
+        let remoteProcess = sbProc
+        sbProc = nil
         
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            self?.sbProc?.destroy()
+        DispatchQueue.global(qos: .userInitiated).async { [weak self, remoteProcess] in
+            remoteProcess?.destroy()
             
             DispatchQueue.main.async {
+                self?.rcrunning = false
                 self?.logmsg("远程调用会话已销毁")
                 completion?()
             }

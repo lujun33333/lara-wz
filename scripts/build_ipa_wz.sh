@@ -113,6 +113,11 @@ LC_ALL=C grep -a -q '_setAllWindowsKeepContextInBackground:' "$BIN" \
     && die "最终二进制仍混入不属于 QXA105 菜单链的全局窗口策略"
 for marker in setDisableUpdateMask: \
     _contextId \
+    SBSAccessibilityWindowHostingController \
+    registerWindowWithContextID:atLevel: \
+    unregisterWindowWithContextID: \
+    UIApplicationProtectedDataWillBecomeUnavailable \
+    UIApplicationProtectedDataDidBecomeAvailable \
     firstCommitContent= \
     sceneState=active; do
     LC_ALL=C grep -a -q "$marker" "$BIN" \
