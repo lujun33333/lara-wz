@@ -166,6 +166,7 @@ $hudSource = Get-Content -LiteralPath (Join-Path $root 'lara/kexploit/WZHUDBridg
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'SBSAccessibilityWindowHostingController' '缺少 Core 隐藏的 SpringBoard 托管类'
 Reject-Text 'lara/kexploit/TaskRop/RemoteCall.h' '@import Foundation' 'RemoteCall 公共头仍要求 Objective-C++ C++ modules'
 Require-Text 'lara/kexploit/TaskRop/RemoteCall.h' '#import <Foundation/Foundation\.h>' 'RemoteCall 公共头缺少非 modules Foundation 导入'
+Require-Text 'lara/kexploit/TaskRop/RemoteCall.h' 'extern "C" \{[\s\S]*remote_alloc_str[\s\S]*remote_sel[\s\S]*remote_getClass[\s\S]*remote_msg[\s\S]*\}' 'RemoteCall helper 未保持 C ABI，Objective-C++ 会链接失败'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'registerWindowWithContextID:atLevel:' '三窗口未使用 Core 的完整托管选择子'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'unregisterWindowWithContextID:' 'HUD 生命周期缺少 SpringBoard context 注销'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'methodSignatureForSelector:' 'SpringBoard 托管未通过真实 Objective-C 方法签名'
