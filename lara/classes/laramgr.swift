@@ -298,6 +298,7 @@ final class laramgr: ObservableObject {
     private let wzWorker = DispatchQueue(label: "lara.wz.session", qos: .userInitiated)
     private var wzTimer: DispatchSourceTimer?
     private var wzEpoch: UInt64 = 0
+    private var wzLaunchEpoch: UInt64 = 0
     private var wzLastResult = ""
     private var wzLastResultTime = Date.distantPast
     private var wzTickNumber: UInt64 = 0
@@ -459,15 +460,49 @@ final class laramgr: ObservableObject {
         // copy mounted here caused the duplicated panels in device captures.
         showWZControlPanel = false
         setGameHUD(true)
+        wzLaunchEpoch &+= 1
+        let launchEpoch = wzLaunchEpoch
+        guard wzhud_prepare_game_launch() else {
+            let reason = String(cString: wzhud_last_error())
+            wzStatus = reason.isEmpty ? "Core 窗口准备失败" : reason
+            logmsg("(wz.hud) context validation could not start error=\(reason)")
+            return
+        }
+        wzStatus = "正在验证 Core 三窗口 context"
+        continueWZLaunch(url: url, epoch: launchEpoch, attempt: 0)
+    }
+    private func continueWZLaunch(url: URL, epoch: UInt64, attempt: Int) {
+        guard epoch == wzLaunchEpoch else { return }
+        if !wzhud_contexts_stable() {
+            guard attempt < 12 else {
+                let reason = String(cString: wzhud_last_error())
+                wzStatus = reason.isEmpty
+                    ? "Core 窗口 context 验证超时"
+                    : reason
+                logmsg("(wz.hud) context validation timeout error=\(reason)")
+                // Return to the foreground renderer when launch is aborted.
+                setGameHUD(true)
+                return
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                [weak self] in
+                self?.continueWZLaunch(url: url, epoch: epoch,
+                                       attempt: attempt + 1)
+            }
+            return
+        }
+        logmsg("(wz.hud) context validation passed; opening smoba")
         UIApplication.shared.open(url, options: [:]) { [weak self] opened in
             DispatchQueue.main.async {
                 guard let self else { return }
+                guard epoch == self.wzLaunchEpoch else { return }
                 if opened {
                     self.wzStatus = "游戏已启动，等待 smoba 进程"
                     self.scheduleWZAttachAfterLaunch(attempt: 0)
                 } else {
                     self.wzStatus = "未能启动王者荣耀"
                     self.logmsg("(wz) smoba URL scheme 启动失败")
+                    self.setGameHUD(true)
                 }
             }
         }
@@ -640,6 +675,8 @@ final class laramgr: ObservableObject {
                     : "悬浮窗创建失败"
             }
         } else {
+            // Invalidate an in-flight 450 ms context validation/pending open.
+            wzLaunchEpoch &+= 1
             hideGameHUD("已关闭")
         }
     }
