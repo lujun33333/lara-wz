@@ -243,6 +243,9 @@ Require-Text 'lara/classes/laramgr.swift' 'wzhud_set_panel_visible\(true\)' '控
 Reject-Text 'lara/classes/laramgr.swift' 'requestGeometryUpdate' '应用场景仍偏离 Core 2.2 的竖屏掩码并强制横屏'
 Require-Text '.github/workflows/build.yml' 'scripts/build_ipa_wz\.sh' 'CI 仍未使用王者构建入口'
 Require-Text 'scripts/build_ipa_wz.sh' 'PlistBuddy.*LARABuildSourceCommit' '构建产物未写入源码提交标识'
+Reject-Text 'scripts/build_ipa_wz.sh' 'for marker in _setAllWindowsKeepContextInBackground:' '打包脚本仍强制要求已从 QXA105 菜单链删除的全局窗口策略'
+Require-Text 'scripts/build_ipa_wz.sh' 'firstCommitContent=' '打包脚本未验证首次菜单内容提交标记'
+Require-Text 'scripts/build_ipa_wz.sh' 'sceneState=active' '打包脚本未验证 Core QXA120 Scene 直连标记'
 
 $appSource = Get-Content -LiteralPath (Join-Path $root 'lara/lara.swift') -Raw
 if ($appSource -match 'TabView\s*\(') {
