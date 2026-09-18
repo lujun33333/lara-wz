@@ -18,10 +18,6 @@ final class LaraAppDelegate: UIResponder, UIApplicationDelegate {
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
-        guard wzhud_install_process_window_policy() else {
-            globallogger.log("(scene) Core process window policy unavailable before scene creation")
-            return false
-        }
         bootstrapLaraApplication()
         return true
     }
@@ -70,16 +66,19 @@ final class LaraSceneDelegate: UIResponder, UIWindowSceneDelegate {
     }
 
     func sceneDidBecomeActive(_ scene: UIScene) {
+        wzhud_scene_active_changed(true)
         globallogger.capture()
         IconThemeManager.shared.startPendingFixupIfPossible()
     }
 
     func sceneWillResignActive(_ scene: UIScene) {
+        wzhud_scene_active_changed(false)
         handleLaraBackgroundTransition()
         globallogger.stopcapture()
     }
 
     func sceneDidEnterBackground(_ scene: UIScene) {
+        wzhud_scene_active_changed(false)
         handleLaraBackgroundTransition()
         globallogger.stopcapture()
     }
