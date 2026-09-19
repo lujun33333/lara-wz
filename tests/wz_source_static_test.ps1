@@ -131,7 +131,8 @@ $helper = Join-Path $root 'scripts/WZHUDHostHelper.m'
 if (Test-Path -LiteralPath $helper) { throw 'FAIL: 已删除的 WZHUDHostHelper.m 仍存在' }
 Reject-Text 'lara.xcodeproj/project.pbxproj' 'WZHUDHostHelper' 'Xcode 工程仍引用旧 helper'
 Reject-Text 'scripts/build_ipa_wz.sh' 'WZHUDHostHelper\.m|WZHUDHostHelper\.o|posix_spawn\s*\(' '构建脚本仍编译 helper 或调用 spawn'
-Require-Text 'scripts/build_ipa_wz.sh' 'WZHUDDrawWindow[\s\S]*WZHUDMenuWindow[\s\S]*SBMainWorkspace[\s\S]*CALayerHost[\s\S]*SBSAccessibilityWindowHostingController' '构建未验证 AX 双窗口与 SpringBoard CALayerHost'
+Require-Text 'scripts/build_ipa_wz.sh' 'WZHUDDrawWindow[\s\S]*WZHUDMenuWindow[\s\S]*IOHIDEventSystemClientDispatchEvent[\s\S]*local-hosting ready \(system-window\)' '构建未验证进程内托管契约'
+Require-Text 'scripts/build_ipa_wz.sh' 'for forbidden in[\s\S]{0,260}SBSAccessibilityWindowHostingController' '退役的 SBS 标记未进入构建的禁止清单'
 Require-Text 'scripts/build_ipa_wz.sh' 'PlistBuddy.*LARABuildSourceCommit' '构建产物未写入源码提交标识'
 Require-Text 'Config/lara.entitlements' 'com\.apple\.QuartzCore\.displayable-context' '最终签名缺少可显示 context 权限'
 Require-Text 'Config/lara.entitlements' 'com\.apple\.springboard\.accessibility-window-hosting' '最终签名缺少 AX 托管权限'
@@ -175,13 +176,21 @@ Require-Count 'lara/kexploit/WZHUDBridge.mm' 'hud_apply_full_screen_geometry\(\)
 Require-Count 'lara/kexploit/WZHUDBridge.mm' 'hud_apply_compact_geometry\(\)' 1 '紧凑几何未被调用'
 Reject-Text 'lara/kexploit/WZHUDBridge.mm' 'g_geometryTransitions' '仍保留 AX 没有的过渡计数器'
 
+# ── 底层：T1SZ_BOOT 首选 XPF，取不到交给实测校准（不得硬失败）──────────
+Require-Text 'lara/kexploit/offsets.m' 'if \(resolvedt1szboot != 0\)[\s\S]{0,320}refreshpacmask\(\);' 'T1SZ_BOOT 未从 XPF 采纳'
+Require-Text 'lara/kexploit/offsets.m' '交由 wz_calibrate_smr_boot\(\) 实测确定' 'XPF 取不到时未交给实测校准'
+Reject-Text 'lara/kexploit/offsets.m' '\n\s*t1sz_boot = 0x1[19];' '仍保留按 CPU 家族猜的 t1sz_boot 静态兜底（真赋值，非注释）'
+Reject-Text 'lara/kexploit/offsets.m' '拒绝以静态兜底值继续' 'offsets 仍在硬失败，会让 App 卡在偏移重试'
+Require-Text 'lara/kexploit/offsets.m' '\(void\)isA16Above;' 'CPU 家族分类结果未明确标注为诊断用途'
+
 # ── 底层：XPF 解析策略对齐 AX（正规字典入口优先，逐项仅作兜底）───────────
 Require-Text 'lara/kexploit/xpfitems.m' 'static const char \*kAXSets\[\] = \{ "base", "translation", "physmap", NULL \}' '缺少 AX 的三组字典集合'
 Require-Text 'lara/kexploit/xpfitems.m' 'xpf_construct_offset_dictionary\(kAXSets\)' '未走 XPF 正规字典入口'
 Require-Text 'lara/kexploit/xpfitems.m' 'xpc_dictionary_get_uint64\(dict, "kernelConstant.T1SZ_BOOT"\)' '未从字典取 T1SZ_BOOT'
 Require-Text 'lara/kexploit/xpfitems.m' '字典入口失败[\s\S]{0,220}回落到逐项解析' '字典失败后缺少明确的回落路径'
 Require-Text 'lara/kexploit/xpfitems.m' 'xpfresetitems\(\);[\s\S]{0,400}xpf_item_resolve' '兜底逐项解析前未清缓存'
-Reject-Text 'lara/kexploit/xpfitems.m' '保留静态表值' '仍保留静态兜底语义'
+Reject-Text 'lara/kexploit/xpfitems.m' '\n\s*xpf_set_error\(""\);' '仍写入空错误串，会抹掉 finder 的真实原因（真调用，非注释）'
+Require-Text 'lara/kexploit/xpfitems.m' '原因: %s' '缺少的 item 未带出 XPF 记录的原因'
 # ── 底层：kernelcache 走 Partial 分段获取（对齐 AX），整包下载降为兜底 ─────
 Require-Text 'lara/kexploit/Partial.h' '@interface Partial : NSObject' 'Partial 类未声明'
 Require-Text 'lara/kexploit/Partial.h' '\+ \(instancetype\)partialZipWithURL:\(NSURL \*\)url error:\(NSError \*\*\)error' '缺少 Partial 构造入口'
