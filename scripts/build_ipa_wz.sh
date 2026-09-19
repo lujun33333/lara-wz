@@ -39,6 +39,8 @@ need_files=(
     "lara/kexploit/WZAXFeatureRules.h"
     "lara/kexploit/WZHUDBridge.h"
     "lara/kexploit/WZHUDBridge.mm"
+    "lara/kexploit/Partial.h"
+    "lara/kexploit/Partial.m"
     "lara/Rajdhani Bold.otf"
     "lara/AXReference.bundle/Assets.car"
     "lara/AppIcon60x60@2x.png"
@@ -92,7 +94,7 @@ BIN="$SRC_APP/$APP"
 INFO_PLIST="$SRC_APP/Info.plist"
 [[ -f "$INFO_PLIST" ]] || die "构建后未找到 Info.plist"
 
-say "使用 AX 本地双窗口与 SpringBoard CALayerHost 权限签名 App..."
+say "使用 AX 本地双窗口权限签名 App（纯进程内托管，无 SpringBoard 注入）..."
 ldid -S"$ROOT/Config/lara.entitlements" "$BIN"
 entitlements=$(ldid -e "$BIN")
 grep -q 'com.apple.QuartzCore.displayable-context' <<<"$entitlements" \
@@ -124,23 +126,26 @@ LC_ALL=C grep -a -q '_setAllWindowsKeepContextInBackground:' "$BIN" \
     && die "最终二进制仍混入不属于 QXA105 菜单链的全局窗口策略"
 for marker in WZHUDDrawWindow \
     WZHUDMenuWindow \
-    SBMainWorkspace \
-    CALayerHost \
     BackBoardServices.framework/BackBoardServices \
-    SBSAccessibilityWindowHostingController \
-    registerWindowWithContextID:atLevel: \
-    unregisterWindowWithContextID:atLevel: \
-    setContextId: \
-    performSelectorOnMainThread:withObject:waitUntilDone: \
     setDisableUpdateMask: \
-    Rajdhani-Bold \
-    "AX hosting class ready" \
-    "hosting=ready mode=system-window" \
-    "springboard dual-host ready"; do
+    IOHIDEventSystemClientDispatchEvent \
+    "local-hosting ready (system-window)" \
+    "hosting-probe" \
+    "(xpf) 字典入口" \
+    "(offs) XPF 未能给出 T1SZ_BOOT" \
+    "(partial) 目标成员" \
+    Rajdhani-Bold; do
     LC_ALL=C grep -a -q -- "$marker" "$BIN" \
         || die "最终二进制缺少 AX 本地双窗口标记：$marker"
 done
-for forbidden in --wzhud-host posix_spawn direct_remote_ WZHUDFloatWindow; do
+# 已归档/删除的 SpringBoard 跨进程路径不得回到二进制里。
+for forbidden in --wzhud-host posix_spawn direct_remote_ WZHUDFloatWindow \
+    SBMainWorkspace \
+    SBSAccessibilityWindowHostingController \
+    registerWindowWithContextID:atLevel: \
+    unregisterWindowWithContextID:atLevel: \
+    "AX hosting class ready" \
+    "springboard dual-host ready"; do
     LC_ALL=C grep -a -q -- "$forbidden" "$BIN" \
         && die "最终二进制仍混入已删除的 HUD 路径：$forbidden"
 done
