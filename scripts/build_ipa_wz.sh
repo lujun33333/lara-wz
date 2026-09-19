@@ -36,6 +36,7 @@ need_files=(
     "lara/kexploit/wz/WZYuanbaoDrawPolicy.h"
     "lara/kexploit/WZHUDBridge.h"
     "lara/kexploit/WZHUDBridge.mm"
+    "scripts/WZHUDHostHelper.m"
     "lara/heroatlas.bin"
     "lara/core-mountain.png"
     "lara/classes/laramgr.swift"
@@ -87,27 +88,15 @@ BIN="$SRC_APP/$APP"
 INFO_PLIST="$SRC_APP/Info.plist"
 [[ -f "$INFO_PLIST" ]] || die "构建后未找到 Info.plist"
 
-HUD_HELPER="$SRC_APP/WZHUDHostHelper"
-say "编译独立 HUD context 托管 helper..."
-xcrun --sdk iphoneos clang \
-    -arch arm64 \
-    -miphoneos-version-min=15.0 \
-    -fobjc-arc -fmodules \
-    "$ROOT/scripts/WZHUDHostHelper.m" \
-    -framework Foundation -framework UIKit \
-    -o "$HUD_HELPER"
-chmod 0755 "$HUD_HELPER"
-
-say "使用 TrollSpeed/assistivetouchd 权限签名 App 与 HUD helper..."
+say "使用 TrollSpeed/assistivetouchd 权限签名双模式 App..."
 ldid -S"$ROOT/Config/lara.entitlements" "$BIN"
-ldid -S"$ROOT/Config/lara.entitlements" "$HUD_HELPER"
-for signed in "$BIN" "$HUD_HELPER"; do
-    entitlements=$(ldid -e "$signed")
-    grep -q 'com.apple.QuartzCore.displayable-context' <<<"$entitlements" \
-        || die "签名缺少 displayable-context：$signed"
-    grep -q 'com.apple.springboard.accessibility-window-hosting' <<<"$entitlements" \
-        || die "签名缺少 accessibility-window-hosting：$signed"
-done
+entitlements=$(ldid -e "$BIN")
+grep -q 'com.apple.QuartzCore.displayable-context' <<<"$entitlements" \
+    || die "主 executable 签名缺少 displayable-context"
+grep -q 'com.apple.springboard.accessibility-window-hosting' <<<"$entitlements" \
+    || die "主 executable 签名缺少 accessibility-window-hosting"
+[[ ! -e "$SRC_APP/WZHUDHostHelper" ]] \
+    || die "App 中不应再打包独立 WZHUDHostHelper"
 /usr/libexec/PlistBuddy -c 'Delete :LARABuildSourceCommit' "$INFO_PLIST" \
     >/dev/null 2>&1 || true
 /usr/libexec/PlistBuddy -c "Add :LARABuildSourceCommit string $SOURCE_COMMIT" \
@@ -115,7 +104,7 @@ done
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :LARABuildSourceCommit' "$INFO_PLIST")" == "$SOURCE_COMMIT" ]] \
     || die "Info.plist 未写入源码提交标识"
 
-for object in wzmem.o wzesp.o KoiProjection.o YuanbaoCollector.o WZHUDBridge.o laramgr.o; do
+for object in wzmem.o wzesp.o KoiProjection.o YuanbaoCollector.o WZHUDBridge.o WZHUDHostHelper.o laramgr.o; do
     find "$DERIVED" -name "$object" -print -quit | grep -q . \
         || die "$object 未参与编译"
 done
@@ -137,18 +126,16 @@ for marker in setDisableUpdateMask: \
     _contextId \
     firstCommitContent= \
     sceneState=active \
-    WZHUDHostHelper \
+    --wzhud-host \
+    host-mode=ready \
     hosting=ready\ target=helper \
     noRemoteCall=1 \
-    hosted-ca; do
-    LC_ALL=C grep -a -q "$marker" "$BIN" \
-        || die "最终二进制缺少王者 HUD 标记：$marker"
-done
-for marker in SBSAccessibilityWindowHostingController \
+    hosted-ca \
+    SBSAccessibilityWindowHostingController \
     registerWindowWithContextID:atLevel: \
     unregisterWindowWithContextID:; do
-    LC_ALL=C grep -a -q "$marker" "$HUD_HELPER" \
-        || die "HUD helper 缺少 context 托管标记：$marker"
+    LC_ALL=C grep -a -q -- "$marker" "$BIN" \
+        || die "最终二进制缺少王者 HUD 标记：$marker"
 done
 LC_ALL=C grep -a -q 'direct-input=' "$BIN" \
     && die "最终二进制仍混入会导致 SpringBoard 重载的远端输入轮询"
@@ -168,6 +155,8 @@ STAGE="$ROOT/build/package-wz"
 rm -rf "$STAGE"
 mkdir -p "$STAGE/Payload"
 cp -R "$SRC_APP" "$STAGE/Payload/$APP.app"
+[[ ! -e "$STAGE/Payload/$APP.app/WZHUDHostHelper" ]] \
+    || die "打包暂存区仍包含独立 WZHUDHostHelper"
 (cd "$STAGE" && zip -qry "$ROOT/$PACKAGE_STEM.ipa" Payload)
 
 cat > "$ROOT/$PACKAGE_STEM.json" <<JSON

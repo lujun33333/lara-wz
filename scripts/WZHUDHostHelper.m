@@ -3,6 +3,7 @@
 #import <CoreFoundation/CoreFoundation.h>
 #import <dispatch/dispatch.h>
 
+#include <crt_externs.h>
 #include <dlfcn.h>
 #include <errno.h>
 #include <limits.h>
@@ -28,14 +29,15 @@ static pid_t WZParentProcessID;
 static atomic_bool WZShutdownStarted = false;
 
 static void WZPrintUsage(const char *program) {
+    (void)program;
+    const char *command = "lara --wzhud-host";
     fprintf(stderr,
             "usage: %s --ready <path> "
             "--context <id0> <window-level0> "
             "--context <id1> <window-level1> "
             "--context <id2> <window-level2>\n"
             "       %s --stop <pid>\n",
-            program ?: "WZHUDHostHelper",
-            program ?: "WZHUDHostHelper");
+            command, command);
 }
 
 static BOOL WZParseProcessID(const char *value, pid_t *result) {
@@ -218,7 +220,7 @@ static BOOL WZWriteReadyFile(NSString *path,
                                error:error];
 }
 
-int main(int argc, char *argv[]) {
+static int WZHUDHostProcessMain(int argc, char *argv[]) {
     @autoreleasepool {
         if (argc == 3 && strcmp(argv[1], "--stop") == 0) {
             pid_t processID = 0;
@@ -319,15 +321,6 @@ int main(int argc, char *argv[]) {
             WZHostedContextIDs[index] = contextIDs[index];
         }
 
-        NSError *readyError = nil;
-        if (!WZWriteReadyFile(readyPath, contextIDs, levels, &readyError)) {
-            fprintf(stderr, "cannot publish ready file: %s\n",
-                    readyError.localizedDescription.UTF8String);
-            WZUnregisterAll();
-            dlclose(springBoardServices);
-            return 73;
-        }
-
         WZMainRunLoop = CFRunLoopGetCurrent();
         CFRetain(WZMainRunLoop);
         CFRunLoopSourceContext sourceContext = {0};
@@ -363,11 +356,29 @@ int main(int argc, char *argv[]) {
             });
             dispatch_resume(parentSource);
         }
+        int exitCode = 0;
         if (!termSource || !interruptSource || !parentSource) {
             fprintf(stderr, "cannot install shutdown signal sources\n");
+            exitCode = 70;
             WZRequestShutdown();
         } else {
-            CFRunLoopRun();
+            // Publish readiness only after all three controllers are retained
+            // and the shutdown/parent lifecycle is fully installed.
+            NSError *readyError = nil;
+            if (!WZWriteReadyFile(readyPath, contextIDs, levels,
+                                  &readyError)) {
+                fprintf(stderr, "cannot publish ready file: %s\n",
+                        readyError.localizedDescription.UTF8String);
+                exitCode = 73;
+                WZRequestShutdown();
+            } else {
+                fprintf(stderr,
+                        "(lara.wz.local-hud) host-mode=ready pid=%d "
+                        "parent=%d contexts=%u/%u/%u\n",
+                        getpid(), WZParentProcessID, contextIDs[0],
+                        contextIDs[1], contextIDs[2]);
+                CFRunLoopRun();
+            }
         }
 
         if (termSource) dispatch_source_cancel(termSource);
@@ -382,6 +393,27 @@ int main(int argc, char *argv[]) {
         CFRelease(WZMainRunLoop);
         WZMainRunLoop = NULL;
         dlclose(springBoardServices);
-        return 0;
+        return exitCode;
     }
+}
+
+// TrollSpeed launches its already-installed main executable again with a
+// private HUD mode argument. Do the same here: this constructor runs before
+// Swift's @main entry, consumes only the exact internal mode, and never returns
+// to UIApplicationMain in the child host/stop process. Normal launches return
+// immediately and preserve the existing Swift application lifecycle.
+__attribute__((constructor))
+static void WZHUDHostProcessConstructor(void) {
+    int *argumentCount = _NSGetArgc();
+    char ***argumentVector = _NSGetArgv();
+    if (!argumentCount || !argumentVector || !*argumentVector ||
+        *argumentCount < 2 ||
+        strcmp((*argumentVector)[1], "--wzhud-host") != 0) {
+        return;
+    }
+
+    int exitCode = WZHUDHostProcessMain(
+        *argumentCount - 1, *argumentVector + 1);
+    fflush(NULL);
+    _exit(exitCode);
 }
