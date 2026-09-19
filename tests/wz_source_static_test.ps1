@@ -172,6 +172,7 @@ Require-Text 'lara/kexploit/WZHUDBridge.mm' 'direct_remote_invoke_on_main_result
 Reject-Text 'lara/classes/laramgr.swift' 'rcinit\(process: "SpringBoard"|wzhud_create_direct_springboard_float|wzhud_poll_direct_springboard_commands|wzhud_remove_direct_springboard_float' '王者启动链仍进入 SpringBoard RemoteCall/直建菜单路径'
 Require-Text 'lara/classes/laramgr.swift' 'wzhud_prepare_game_launch\(\)[\s\S]*wzhud_start_context_host_helper\(\)[\s\S]*openWZGameURL\(url, epoch: epoch\)' '王者启动未使用独立 context helper 或 helper 失败仍会阻断游戏'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' '_NSGetExecutablePath[\s\S]*--wzhud-host[\s\S]*wzhud_start_context_host_helper[\s\S]*--context[\s\S]*hosting=ready target=helper[\s\S]*noRemoteCall=1' '缺少 TrollSpeed 同款主 executable 双模式启动与确认链'
+Reject-Text 'lara/kexploit/WZHUDBridge.mm' 'isExecutableFileAtPath:' 'HUD 主 executable 启动仍被调用进程身份下不可靠的执行权限预检查阻断'
 Reject-Text 'lara/kexploit/WZHUDBridge.mm' 'mainBundle\.bundlePath[\s\S]{0,180}stringByAppendingPathComponent:@"WZHUDHostHelper"|copyItemAtPath:|helper=staged|chmod\(' 'HUD 托管仍依赖独立裸 helper 或临时复制改权限'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'wzhud_stop_context_host_helper[\s\S]*--stop[\s\S]*hosting=stopped target=helper' '缺少独立 HUD context helper 停止链'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'backgroundHosted[\s\S]{0,300}\[CATransaction flush\][\s\S]{0,200}else[\s\S]{0,120}present_metal_frame_main' '后台已托管路径仍会执行全屏 Metal/fallback 快照'
