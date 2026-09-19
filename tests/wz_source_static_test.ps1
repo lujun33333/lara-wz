@@ -51,7 +51,7 @@ Require-Text 'lara/classes/laramgr.swift' 'wzhud_set_transport_state' '连接状
 Require-Text 'lara/classes/laramgr.swift' 'func prepareWZEnvironment\(' 'Core 初始化页未接完整环境准备链'
 Require-Text 'lara/classes/laramgr.swift' 'func wzCollectorPagesReadable\(' '连接成功前未验证王者关键采集页'
 Require-Text 'lara/classes/laramgr.swift' 'imageValid && profileReadable' '采集页失败仍可能伪装连接成功'
-Require-Text 'lara/classes/laramgr.swift' 'wzStatus = "正在启动王者荣耀"\s*openWZGameURL\(url, epoch: launchEpoch\)\s*prepareWZDirectSpringBoardFloat' '游戏 URL 未在跨进程浮球准备前立即打开'
+Require-Text 'lara/classes/laramgr.swift' 'wzStatus = "正在启动原版 Core 悬浮窗"\s*prepareWZContextHostAndOpen\(url: url, epoch: launchEpoch\)' '游戏启动未切换到原版 Core context helper'
 Require-Text 'lara/classes/laramgr.swift' 'func setGameHUD\(_ enabled: Bool\)[\s\S]{0,1400}let requested = wzhud_set_enabled\(true\)' '显式 HUD 开关未保留唯一窗口创建入口'
 Require-Text 'lara/kexploit/wzesp.h' 'WZESP_SHOW_MAP_ADJUSTMENT' '缺少独立地图调节显示开关'
 Require-Text 'lara/kexploit/wzesp.h' 'WZESP_SHOW_SKILL' '缺少技能页读取开关'
@@ -64,7 +64,7 @@ Require-Text 'lara/kexploit/WZHUDBridge.mm' 'monster_marker_color\(item\.monster
 Require-Text 'lara/kexploit/WZHUDBridge.mm' '10000 \+ \(NSInteger\)__builtin_ctz\(flag\)' 'HUD 高位开关仍可能与滑块 tag 冲突'
 Require-Text 'lara/kexploit/wz/WZYuanbaoDrawPolicy.h' 'kRecallSpinRadiansPerSecond = 7\.854f' '未同步元宝回城旋转参数'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'snapshotGeneration = g_wzSnapshotGeneration\.load\(\)[\s\S]*apply_wz_snapshot_main[\s\S]*snapshotGeneration != g_wzSnapshotGeneration\.load\(\)[\s\S]*hide_wz_items_main\(\)' '并发断开可能让旧快照覆盖最后清空帧'
-Require-Text 'lara/kexploit/WZHUDBridge.mm' 'preferredFramesPerSecond = 60' '游戏绘制未接 Core 2.2 的 60 FPS 帧驱动'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'preferredFramesPerSecond = 30' '游戏绘制未切换到稳定的 30 FPS 帧驱动'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'WZESP_SHOW_AVATAR \| WZESP_SHOW_HEALTH \| WZESP_SHOW_RECALL' 'Core 默认绘制开关未同步'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'WZHUDMetalCanvas' '游戏画布未按 Core QXA110 使用独立 UIView 宿主'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'NSClassFromString\(@"CAMetalLayer"\)' '游戏画布未按 Core QXA110 使用 CAMetalLayer'
@@ -126,7 +126,7 @@ Require-Text 'lara/kexploit/WZHUDBridge.mm' '@interface WZHUDFloatWindow : UIWin
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'canBecomeKeyWindow \{ return NO; \}' 'HUD 窗口未同步 Core 非 key-window 语义'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' '_isSystemWindow \{ return YES; \}' 'HUD 窗口未同步 Core system-window 语义'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' '_isWindowServerHostingManaged \{ return NO; \}' 'HUD 窗口未同步 Core hosting 语义'
-Require-Text 'lara/kexploit/WZHUDBridge.mm' '_shouldCreateContextAsSecure \{ return NO; \}' 'HUD 窗口未同步 Core context 语义'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' '_shouldCreateContextAsSecure \{ return YES; \}' 'HUD 窗口未同步可托管 secure context 语义'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' '_ignoresHitTest \{ return YES; \}' 'Core 绘制窗口未保持穿透'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' '@implementation WZHUDControlWindow[\s\S]*_ignoresHitTest \{ return NO; \}' 'Core 控制窗口仍忽略 UIKit 点击'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'if \(!insideControl\) return nil;' '控制窗口未按面板范围选择性命中'
@@ -169,38 +169,17 @@ Require-Text 'lara/kexploit/WZHUDBridge.mm' 'removeObserver:g_controller' 'HUD �
 $hudSource = Get-Content -LiteralPath (Join-Path $root 'lara/kexploit/WZHUDBridge.mm') -Raw
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'performSelectorOnMainThread:withObject:waitUntilDone:' '直建 SpringBoard UIKit 未调度到真实主线程'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'direct_remote_invoke_on_main_result[\s\S]*NSInvocation' '缺少 DarkSpeed 式主线程 NSInvocation helper'
-Require-Text 'lara/kexploit/WZHUDBridge.mm' 'SBMainWorkspace[\s\S]*sharedInstance[\s\S]*mainWindowScene' '直建浮球未绑定 SpringBoard mainWindowScene'
-Reject-Text 'lara/kexploit/WZHUDBridge.mm' 'UILongPressGestureRecognizer|direct-input=' '直建浮球仍保留远端手势轮询路径'
-Reject-Text 'lara/kexploit/WZHUDBridge.h' 'wzhud_poll_direct_springboard_float_input' '头文件仍暴露远端输入轮询 API'
-Reject-Text 'lara/classes/laramgr.swift' 'wzhud_poll_direct_springboard_float_input|wzDirectInputPollTick' '串行 worker 仍调用远端输入轮询'
-Require-Text 'lara/kexploit/WZHUDBridge.mm' 'direct_remote_class\(remoteCall, "UIButton"\)' '远端浮球/菜单未创建 UIButton'
-Require-Text 'lara/kexploit/WZHUDBridge.mm' 'addTarget:action:forControlEvents:[\s\S]{0,600}UIControlEventTouchUpInside|UIControlEventTouchUpInside[\s\S]{0,600}addTarget:action:forControlEvents:' '远端浮球/菜单未使用 UIButton target/action'
-Require-Text 'lara/kexploit/WZHUDBridge.mm' 'g_directSpringBoardMenuWindow = menuWindow' '远端菜单未使用独立 UIWindow'
-Require-Text 'lara/kexploit/WZHUDBridge.mm' 'direct_remote_create_persistent_invocation[\s\S]*retainArguments[\s\S]*direct_remote_sel\(remoteCall, "retain"\)' '远端可重复 invocation 或其参数未长期保留'
-Require-Text 'lara/kexploit/WZHUDBridge.mm' 'writeToFile:atomically:encoding:error:' '远端功能按钮未通过 NSString 原子写命令文件'
-Require-Text 'lara/kexploit/WZHUDBridge.mm' '\{ "头像", 10000 \}[\s\S]*\{ "血量", 10001 \}[\s\S]*\{ "回城", 10002 \}[\s\S]*\{ "射线", 10003 \}[\s\S]*\{ "方框", 10004 \}[\s\S]*\{ "自身视野", 10005 \}[\s\S]*\{ "敌方视野", 10006 \}[\s\S]*\{ "小地图", 10007 \}[\s\S]*\{ "地图调节", 10013 \}' '远端菜单缺少完整英雄/视野/地图功能 action'
-Require-Text 'lara/kexploit/WZHUDBridge.mm' '\{ "野怪", 10008 \}[\s\S]*\{ "野怪实体", 10009 \}[\s\S]*\{ "野怪计时", 10010 \}[\s\S]*\{ "兵线", 10011 \}[\s\S]*\{ "兵线实体", 10012 \}[\s\S]*\{ "技能", 10014 \}' '远端菜单缺少主要兵野/技能功能 action'
-Require-Text 'lara/kexploit/WZHUDBridge.mm' '\{ "左上", 20000 \}[\s\S]*\{ "右上", 20001 \}[\s\S]*\{ "左下", 20002 \}[\s\S]*\{ "右下", 20003 \}' '远端菜单缺少四角位置 action'
-Require-Text 'lara/kexploit/WZHUDBridge.mm' 'removeItemAtPath:path error:nil[\s\S]{0,500}direct_remote_create_owned_string' '创建远端菜单前未清理旧命令文件'
-$directCommandPoll = [regex]::Match($hudSource, 'bool wzhud_poll_direct_springboard_commands[\s\S]*?bool wzhud_remove_direct_springboard_float').Value
-if (-not $directCommandPoll -or $directCommandPoll -notmatch 'fileExistsAtPath:[\s\S]{0,80}return false;') {
-    throw 'FAIL: 本地命令轮询没有在无文件时立即返回'
-}
-$idlePath = [regex]::Match($directCommandPoll, 'bool wzhud_poll_direct_springboard_commands[\s\S]*?return false;').Value
-if ($idlePath -match 'direct_remote_') {
-    throw 'FAIL: 本地命令轮询空闲路径仍会调用 direct_remote helper'
-}
-Require-Text 'lara/kexploit/WZHUDBridge.mm' 'stringWithContentsOfFile:[\s\S]*removeItemAtPath:[\s\S]*activate_control_main\(action\)[\s\S]*direct-command action=' '本地命令文件未按读取/删除/复用控制 action 处理'
-Require-Text 'lara/kexploit/WZHUDBridge.mm' 'action >= 20000 && action <= 20003[\s\S]*direct_remote_set_rect_on_main' '位置命令没有仅在有命令时移动远端浮球'
-Require-Text 'lara/kexploit/WZHUDBridge.mm' 'g_directSpringBoardFloatReady\.store\(true\);[\s\S]{0,220}direct_remote_build_menu_locked[\s\S]{0,500}return true;' '菜单构建失败仍可能撤销已发布浮球或阻断启动'
-$directFloat = [regex]::Match($hudSource, 'bool wzhud_create_direct_springboard_float[\s\S]*?bool wzhud_direct_springboard_float_ready').Value
-if (-not $directFloat -or $directFloat -match 'SBSAccessibilityWindowHostingController|registerWindowWithContextID|_contextId|450 \* NSEC_PER_MSEC|configure_metal_renderer_main|update_fallback_snapshot_main') {
-    throw 'FAIL: SpringBoard 直建浮球仍依赖 context/hosting/450ms/Metal/fallback 门禁'
-}
-$directCleanup = [regex]::Match($hudSource, 'bool wzhud_remove_direct_springboard_float[\s\S]*?bool wzhud_is_enabled').Value
-if (-not $directCleanup -or $directCleanup -match 'remote_release_object|direct_remote_sel\([^\r\n]*"release"') {
-    throw 'FAIL: SpringBoard 直建 UIKit 清理仍会在劫持线程 release'
-}
+Reject-Text 'lara/classes/laramgr.swift' 'rcinit\(process: "SpringBoard"|wzhud_create_direct_springboard_float|wzhud_poll_direct_springboard_commands|wzhud_remove_direct_springboard_float' '王者启动链仍进入 SpringBoard RemoteCall/直建菜单路径'
+Require-Text 'lara/classes/laramgr.swift' 'wzhud_prepare_game_launch\(\)[\s\S]*wzhud_start_context_host_helper\(\)[\s\S]*openWZGameURL\(url, epoch: epoch\)' '王者启动未使用独立 context helper 或 helper 失败仍会阻断游戏'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'WZHUDHostHelper[\s\S]*wzhud_start_context_host_helper[\s\S]*--context[\s\S]*hosting=ready target=helper[\s\S]*noRemoteCall=1' '缺少独立 HUD context helper 启动与确认链'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'wzhud_stop_context_host_helper[\s\S]*--stop[\s\S]*hosting=stopped target=helper' '缺少独立 HUD context helper 停止链'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'backgroundHosted[\s\S]{0,300}\[CATransaction flush\][\s\S]{0,200}else[\s\S]{0,120}present_metal_frame_main' '后台已托管路径仍会执行全屏 Metal/fallback 快照'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'preferredFramesPerSecond = 30' 'HUD 仍以 60 FPS 刷新'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' '@implementation WZHUDDrawWindow[\s\S]*_isSecure[^\r\n]*YES[\s\S]*_shouldCreateContextAsSecure[^\r\n]*YES' '绘制窗口未按 TrollSpeed 使用安全可托管 context'
+Require-Text 'lara/kexploit/WZHUDHostHelper.m' 'registerWindowWithContextID:atLevel:[\s\S]*v@:Id[\s\S]*SBSAccessibilityWindowHostingController' '独立 helper 未按 TrollSpeed 精确注册 context'
+Reject-Text 'lara/kexploit/WZHUDHostHelper.m' 'RemoteCall|SBMainWorkspace|UIButton' '独立 helper 不应注入 SpringBoard 或创建菜单控件'
+Require-Text 'Config/lara.entitlements' 'com\.apple\.QuartzCore\.displayable-context[\s\S]*com\.apple\.springboard\.accessibility-window-hosting' '最终签名权限缺少可显示 context/辅助窗口托管'
+Require-Text 'scripts/build_ipa_wz.sh' 'WZHUDHostHelper[\s\S]*ldid -S' '打包脚本未编译并签名独立 helper'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'SBSAccessibilityWindowHostingController' '缺少 Core 隐藏的 SpringBoard 托管类'
 Reject-Text 'lara/kexploit/TaskRop/RemoteCall.h' '@import Foundation' 'RemoteCall 公共头仍要求 Objective-C++ C++ modules'
 Require-Text 'lara/kexploit/TaskRop/RemoteCall.h' '#import <Foundation/Foundation\.h>' 'RemoteCall 公共头缺少非 modules Foundation 导入'
@@ -227,7 +206,7 @@ Require-Text 'lara/kexploit/WZHUDBridge.mm' 'addObserver:selector:name:object:' 
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'removeObserver:' '注销托管时未移除 SpringBoard 生命周期观察者'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'commitValid = g_requested\.load\(\) && g_contextsStable\.load\(\)[\s\S]*g_validatedContextMask\.load\(\) == contextMask' '并发关闭或 context 模式变化时缺少托管提交前复核'
 Reject-Text 'lara/kexploit/WZHUDBridge.mm' 'commitValid = g_requested\.load\(\) && g_sceneActive\.load\(\)' '场景切后台仍会错误否定已验证的浮球 context'
-Require-Text 'lara/classes/laramgr.swift' 'wzhud_remove_direct_springboard_float\(process\)[\s\S]*wzhud_set_enabled\(false\)' '关闭 HUD 时未先隐藏并移除 SpringBoard 直建浮球'
+Require-Text 'lara/classes/laramgr.swift' 'wzhud_stop_context_host_helper\(\)[\s\S]*wzhud_set_enabled\(false\)' '关闭 HUD 时未先停止独立 context helper'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'refresh_window_context_ids_main' '缺少 Core 三窗口 context 诊断'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' '\[CATransaction flush\]' '窗口切后台前没有完成 Core 显式事务刷新'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'handle_scene_activity_main\(BOOL active\)' 'HUD 未区分 Core 前后台窗口生命周期'
@@ -261,16 +240,12 @@ Require-Text 'lara/kexploit/WZHUDBridge.mm' 'apply_orientation_main[\s\S]*\[CATr
 Require-Text 'lara/kexploit/WZHUDBridge.mm' '450 \* NSEC_PER_MSEC' '缺少 Core context 450ms 稳定等待'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'g_contextValidationBaseline' '缺少三窗口 context 基线'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'g_validatedContextMask\.store\(validatedMask\);\s*g_contextsStable\.store\(validatedMask != 0\)' '完整或浮球 context 复核结果未进入启动门禁'
-Require-Text 'lara/kexploit/WZHUDBridge.h' 'wzhud_create_direct_springboard_float[\s\S]*wzhud_direct_springboard_float_ready[\s\S]*wzhud_poll_direct_springboard_commands[\s\S]*wzhud_remove_direct_springboard_float' '缺少 SpringBoard 直建浮球生命周期/本地命令接口'
+Require-Text 'lara/kexploit/WZHUDBridge.h' 'wzhud_start_context_host_helper[\s\S]*wzhud_stop_context_host_helper' '缺少独立 HUD context helper 生命周期接口'
 Reject-Text 'lara/kexploit/WZHUDBridge.h' 'wzhud_install_process_window_policy' '头文件仍暴露不属于 QXA105 菜单链的全局窗口策略'
-Require-Text 'lara/classes/laramgr.swift' 'rcinit\(process: "SpringBoard", migbypass: false\)' '启动链未建立 SpringBoard RemoteCall'
-Require-Text 'lara/classes/laramgr.swift' 'wzhud_create_direct_springboard_float\(process\)' '未调用 SpringBoard 直建浮球路径'
-Require-Text 'lara/classes/laramgr.swift' 'wzDirectCommandPollTick % 12 == 0[\s\S]*wzhud_poll_direct_springboard_commands\(\)' '本地命令文件未在现有串行 WZ worker 上按 5Hz 轮询'
-Reject-Text 'lara/classes/laramgr.swift' 'wzhud_prepare_game_launch\(|wzhud_contexts_stable\(|wzhud_register_springboard_hosting\(|wzhud_springboard_hosting_ready\(' '新启动链仍依赖旧 context/hosting 门禁'
+Reject-Text 'lara/classes/laramgr.swift' 'wzhud_register_springboard_hosting\(' '启动链仍调用远端 SpringBoard context 注册'
 Require-Text 'lara/classes/laramgr.swift' 'private func openWZGameURL[\s\S]{0,180}guard epoch == wzLaunchEpoch else \{ return \}[\s\S]{0,120}UIApplication\.shared\.open' '游戏 URL 打开仍受 HUD 状态门禁'
 Require-Text 'lara/classes/laramgr.swift' 'let remoteProcess = sbProc\s*sbProc = nil[\s\S]*remoteProcess\?\.destroy\(\)' 'RemoteCall 销毁未先摘除共享引用'
-Require-Text 'lara/classes/laramgr.swift' 'wzRemoteCallInitEpoch != nil \|\| wzRemoteCleanupPending \|\|\s*wzhud_direct_springboard_float_ready\(\)' '直建浮球存活时未保持 RemoteCall'
-Require-Text 'lara/classes/laramgr.swift' 'guard !wzSpringBoardHostingInFlight else' '直建浮球仍活动时 RemoteCall 仍可能被销毁'
+Reject-Text 'lara/classes/laramgr.swift' 'wzRemoteCallInitEpoch|wzRemoteCleanupPending|wzOwnsSpringBoardRemoteCall' '独立 HUD 仍残留 RemoteCall 所有权状态'
 Require-Text 'lara/classes/laramgr.swift' 'rcready = false\s*rcrunning = true[\s\S]*remoteProcess\?\.destroy\(\)[\s\S]*rcrunning = false' 'RemoteCall 销毁期间未阻止并发重建'
 Require-Text 'lara/classes/laramgr.swift' 'wzLaunchEpoch &\+= 1' '关闭 HUD 未取消待执行的 context 验证/游戏启动'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'contexts=%u/%u/%u' '三窗口 context 缺少真机诊断'
@@ -319,8 +294,8 @@ Require-Text 'scripts/build_ipa_wz.sh' 'PlistBuddy.*LARABuildSourceCommit' '构�
 Reject-Text 'scripts/build_ipa_wz.sh' 'for marker in _setAllWindowsKeepContextInBackground:' '打包脚本仍强制要求已从 QXA105 菜单链删除的全局窗口策略'
 Require-Text 'scripts/build_ipa_wz.sh' 'firstCommitContent=' '打包脚本未验证首次菜单内容提交标记'
 Require-Text 'scripts/build_ipa_wz.sh' 'sceneState=active' '打包脚本未验证 Core QXA120 Scene 直连标记'
-Require-Text 'scripts/build_ipa_wz.sh' 'SBMainWorkspace[\s\S]*mainWindowScene[\s\S]*setWindowScene:[\s\S]*direct-springboard-float=ready' '打包脚本未验证 SpringBoard 直建浮球标记'
-Reject-Text 'scripts/build_ipa_wz.sh' 'SBSAccessibilityWindowHostingController|registerWindowWithContextID:atLevel:|unregisterWindowWithContextID:' '打包脚本仍强制要求设备上不可用的旧 context hosting API'
+Require-Text 'scripts/build_ipa_wz.sh' 'WZHUDHostHelper[\s\S]*SBSAccessibilityWindowHostingController[\s\S]*registerWindowWithContextID:atLevel:' '打包脚本未验证独立 HUD helper/context 托管标记'
+Reject-Text 'scripts/build_ipa_wz.sh' 'SBMainWorkspace|direct-springboard-float=ready|direct-command action=' '打包脚本仍强制要求 SpringBoard RemoteCall 直建菜单'
 
 $appSource = Get-Content -LiteralPath (Join-Path $root 'lara/lara.swift') -Raw
 if ($appSource -match 'TabView\s*\(') {
@@ -335,7 +310,7 @@ Require-Text 'lara/lara.swift' 'UIWindow\(windowScene: windowScene\)' 'SceneDele
 Require-Text 'lara/lara.swift' 'UIHostingController\(rootView: LaraRootView\(\)\)' '现有 SwiftUI 页面未由 UIKit 场景承载'
 Require-Text 'lara/lara.swift' 'didFinishLaunchingWithOptions[\s\S]*bootstrapLaraApplication\(\)[\s\S]*return true' 'UIKit 启动链未正常初始化 Lara'
 Reject-Text 'lara/lara.swift' 'wzhud_install_process_window_policy' 'AppDelegate 仍被不属于 Core QXA105 的全局策略阻断'
-Require-Text 'lara/lara.swift' 'wzSpringBoardHostingInFlight \|\|[\s\S]*wzhud_springboard_hosting_ready\(\)' '后台切换仍会并发销毁正在使用的 SpringBoard RemoteCall'
+Reject-Text 'lara/lara.swift' 'wzSpringBoardHostingInFlight \|\|[\s\S]{0,100}wzhud_springboard_hosting_ready\(\)' '独立 HUD helper 仍错误占用 SpringBoard RemoteCall'
 
 $atlas = Join-Path $root 'lara/heroatlas.bin'
 if (-not (Test-Path -LiteralPath $atlas) -or (Get-Item -LiteralPath $atlas).Length -ne 2164890) {

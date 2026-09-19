@@ -86,6 +86,28 @@ BIN="$SRC_APP/$APP"
 [[ -f "$BIN" ]] || die "构建后未找到 $BIN"
 INFO_PLIST="$SRC_APP/Info.plist"
 [[ -f "$INFO_PLIST" ]] || die "构建后未找到 Info.plist"
+
+HUD_HELPER="$SRC_APP/WZHUDHostHelper"
+say "编译独立 HUD context 托管 helper..."
+xcrun --sdk iphoneos clang \
+    -arch arm64 \
+    -miphoneos-version-min=15.0 \
+    -fobjc-arc -fmodules \
+    "$ROOT/lara/kexploit/WZHUDHostHelper.m" \
+    -framework Foundation -framework UIKit \
+    -o "$HUD_HELPER"
+chmod 0755 "$HUD_HELPER"
+
+say "使用 TrollSpeed/assistivetouchd 权限签名 App 与 HUD helper..."
+ldid -S"$ROOT/Config/lara.entitlements" "$BIN"
+ldid -S"$ROOT/Config/lara.entitlements" "$HUD_HELPER"
+for signed in "$BIN" "$HUD_HELPER"; do
+    entitlements=$(ldid -e "$signed")
+    grep -q 'com.apple.QuartzCore.displayable-context' <<<"$entitlements" \
+        || die "签名缺少 displayable-context：$signed"
+    grep -q 'com.apple.springboard.accessibility-window-hosting' <<<"$entitlements" \
+        || die "签名缺少 accessibility-window-hosting：$signed"
+done
 /usr/libexec/PlistBuddy -c 'Delete :LARABuildSourceCommit' "$INFO_PLIST" \
     >/dev/null 2>&1 || true
 /usr/libexec/PlistBuddy -c "Add :LARABuildSourceCommit string $SOURCE_COMMIT" \
@@ -115,16 +137,18 @@ for marker in setDisableUpdateMask: \
     _contextId \
     firstCommitContent= \
     sceneState=active \
-    SBMainWorkspace \
-    mainWindowScene \
-    setWindowScene: \
-    addTarget:action:forControlEvents: \
-    writeToFile:atomically:encoding:error: \
-    direct-command\ action= \
-    performSelectorOnMainThread:withObject:waitUntilDone: \
-    direct-springboard-float=ready; do
+    WZHUDHostHelper \
+    hosting=ready\ target=helper \
+    noRemoteCall=1 \
+    preferredFramesPerSecond; do
     LC_ALL=C grep -a -q "$marker" "$BIN" \
         || die "最终二进制缺少王者 HUD 标记：$marker"
+done
+for marker in SBSAccessibilityWindowHostingController \
+    registerWindowWithContextID:atLevel: \
+    unregisterWindowWithContextID:; do
+    LC_ALL=C grep -a -q "$marker" "$HUD_HELPER" \
+        || die "HUD helper 缺少 context 托管标记：$marker"
 done
 LC_ALL=C grep -a -q 'direct-input=' "$BIN" \
     && die "最终二进制仍混入会导致 SpringBoard 重载的远端输入轮询"
