@@ -36,7 +36,6 @@ need_files=(
     "lara/kexploit/wz/WZYuanbaoDrawPolicy.h"
     "lara/kexploit/WZHUDBridge.h"
     "lara/kexploit/WZHUDBridge.mm"
-    "scripts/WZHUDHostHelper.m"
     "lara/heroatlas.bin"
     "lara/core-mountain.png"
     "lara/classes/laramgr.swift"
@@ -88,15 +87,13 @@ BIN="$SRC_APP/$APP"
 INFO_PLIST="$SRC_APP/Info.plist"
 [[ -f "$INFO_PLIST" ]] || die "构建后未找到 Info.plist"
 
-say "使用 TrollSpeed/assistivetouchd 权限签名双模式 App..."
+say "使用 AX 本地双窗口权限签名 App..."
 ldid -S"$ROOT/Config/lara.entitlements" "$BIN"
 entitlements=$(ldid -e "$BIN")
 grep -q 'com.apple.QuartzCore.displayable-context' <<<"$entitlements" \
     || die "主 executable 签名缺少 displayable-context"
 grep -q 'com.apple.springboard.accessibility-window-hosting' <<<"$entitlements" \
     || die "主 executable 签名缺少 accessibility-window-hosting"
-[[ ! -e "$SRC_APP/WZHUDHostHelper" ]] \
-    || die "App 中不应再打包独立 WZHUDHostHelper"
 /usr/libexec/PlistBuddy -c 'Delete :LARABuildSourceCommit' "$INFO_PLIST" \
     >/dev/null 2>&1 || true
 /usr/libexec/PlistBuddy -c "Add :LARABuildSourceCommit string $SOURCE_COMMIT" \
@@ -104,7 +101,7 @@ grep -q 'com.apple.springboard.accessibility-window-hosting' <<<"$entitlements" 
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :LARABuildSourceCommit' "$INFO_PLIST")" == "$SOURCE_COMMIT" ]] \
     || die "Info.plist 未写入源码提交标识"
 
-for object in wzmem.o wzesp.o KoiProjection.o YuanbaoCollector.o WZHUDBridge.o WZHUDHostHelper.o laramgr.o; do
+for object in wzmem.o wzesp.o KoiProjection.o YuanbaoCollector.o WZHUDBridge.o laramgr.o; do
     find "$DERIVED" -name "$object" -print -quit | grep -q . \
         || die "$object 未参与编译"
 done
@@ -118,27 +115,20 @@ LC_ALL=C grep -a -q 'mach-task-readonly' "$BIN" \
     || die "最终二进制没有 Mach task 只读 backend"
 LC_ALL=C grep -a -q 'lara.wz.local-hud' "$BIN" \
     || die "最终二进制没有王者托管 HUD"
-LC_ALL=C grep -a -q 'visual=draw/input=control contextValidation=450ms' "$BIN" \
-    || die "最终二进制没有 Core 绘制/输入分层"
 LC_ALL=C grep -a -q '_setAllWindowsKeepContextInBackground:' "$BIN" \
     && die "最终二进制仍混入不属于 QXA105 菜单链的全局窗口策略"
-for marker in setDisableUpdateMask: \
-    _contextId \
-    firstCommitContent= \
-    sceneState=active \
-    --wzhud-host \
-    host-mode=ready \
-    hosting=ready\ target=helper \
-    noRemoteCall=1 \
-    hosted-ca \
+for marker in WZHUDDrawWindow \
+    WZHUDMenuWindow \
     SBSAccessibilityWindowHostingController \
     registerWindowWithContextID:atLevel: \
-    unregisterWindowWithContextID:; do
+    unregisterWindowWithContextID:atLevel:; do
     LC_ALL=C grep -a -q -- "$marker" "$BIN" \
-        || die "最终二进制缺少王者 HUD 标记：$marker"
+        || die "最终二进制缺少 AX 本地双窗口标记：$marker"
 done
-LC_ALL=C grep -a -q 'direct-input=' "$BIN" \
-    && die "最终二进制仍混入会导致 SpringBoard 重载的远端输入轮询"
+for forbidden in --wzhud-host posix_spawn direct_remote_ WZHUDFloatWindow; do
+    LC_ALL=C grep -a -q -- "$forbidden" "$BIN" \
+        && die "最终二进制仍混入已删除的 HUD 路径：$forbidden"
+done
 [[ -f "$SRC_APP/heroatlas.bin" ]] \
     || die "最终 App 未包含英雄头像图集"
 [[ -f "$SRC_APP/core-mountain.png" ]] \
@@ -155,8 +145,6 @@ STAGE="$ROOT/build/package-wz"
 rm -rf "$STAGE"
 mkdir -p "$STAGE/Payload"
 cp -R "$SRC_APP" "$STAGE/Payload/$APP.app"
-[[ ! -e "$STAGE/Payload/$APP.app/WZHUDHostHelper" ]] \
-    || die "打包暂存区仍包含独立 WZHUDHostHelper"
 (cd "$STAGE" && zip -qry "$ROOT/$PACKAGE_STEM.ipa" Payload)
 
 cat > "$ROOT/$PACKAGE_STEM.json" <<JSON

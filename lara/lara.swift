@@ -165,8 +165,9 @@ private func bootstrapLaraApplication() {
 private func handleLaraBackgroundTransition() {
     let mgr = laramgr.shared
     guard mgr.rcready, !laraBackgroundCleanupInFlight else { return }
-    // The independent HUD helper owns context registration; it does not use
-    // Lara's SpringBoard RemoteCall and therefore does not pin that session.
+    // The AX HUD is owned by Lara's two local controllers. Backgrounding may
+    // release an unrelated RemoteCall session, but must not disable or destroy
+    // either HUD window.
     let keepSpringBoardRemoteCallAlive = UserDefaults.standard.bool(
         forKey: "keepSpringBoardRemoteCallAliveIOS16"
     )

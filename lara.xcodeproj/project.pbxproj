@@ -27,7 +27,6 @@
 		15F024352FBB9510004BD090 /* podBackgroundViewDark.visualstyleset in Resources */ = {isa = PBXBuildFile; fileRef = 15F023FC2FBB9510004BD090 /* podBackgroundViewDark.visualstyleset */; };
 		9F4A1D2F3C4E567890123456 /* lara/lib/libxpf.dylib in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 9F4A1D2E3C4E567890123456 /* lara/lib/libxpf.dylib */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		9F4A1D423C4E567890123456 /* lara/lib/libgrabkernel2.dylib in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 9F4A1D413C4E567890123456 /* lara/lib/libgrabkernel2.dylib */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		9F4A1D553C4E567890123456 /* scripts/WZHUDHostHelper.m in Sources */ = {isa = PBXBuildFile; fileRef = 9F4A1D543C4E567890123456 /* scripts/WZHUDHostHelper.m */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -77,7 +76,6 @@
 		8F5C1F9B2D6A4E9D9F4B1A21 /* lara/kexploit/darksword.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = lara/kexploit/darksword.m; sourceTree = "<group>"; };
 		9F4A1D2E3C4E567890123456 /* lara/lib/libxpf.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; path = lara/lib/libxpf.dylib; sourceTree = "<group>"; };
 		9F4A1D413C4E567890123456 /* lara/lib/libgrabkernel2.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; path = lara/lib/libgrabkernel2.dylib; sourceTree = "<group>"; };
-		9F4A1D543C4E567890123456 /* scripts/WZHUDHostHelper.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = scripts/WZHUDHostHelper.m; sourceTree = "<group>"; };
 		A1B2C3D4E5F60001A1B2C3D4 /* lara/kexploit/ota.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = lara/kexploit/ota.m; sourceTree = "<group>"; };
 		A1B2C3D4E5F60002A1B2C3D4 /* lara/kexploit/ota.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = lara/kexploit/ota.h; sourceTree = "<group>"; };
 		A1B2C3D4E5F60003A1B2C3D4 /* lara/kexploit/screentime.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = lara/kexploit/screentime.m; sourceTree = "<group>"; };
@@ -244,7 +242,6 @@
 				A1B2C3D4E5F60004A1B2C3D4 /* lara/kexploit/screentime.h */,
 				9F4A1D2E3C4E567890123456 /* lara/lib/libxpf.dylib */,
 				9F4A1D413C4E567890123456 /* lara/lib/libgrabkernel2.dylib */,
-				9F4A1D543C4E567890123456 /* scripts/WZHUDHostHelper.m */,
 			);
 			name = "Recovered References";
 			sourceTree = "<group>";
@@ -375,7 +372,6 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				9F4A1D553C4E567890123456 /* scripts/WZHUDHostHelper.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

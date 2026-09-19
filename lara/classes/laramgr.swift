@@ -302,8 +302,6 @@ final class laramgr: ObservableObject {
     private var wzLastResult = ""
     private var wzLastResultTime = Date.distantPast
     private var wzTickNumber: UInt64 = 0
-    private var wzHostingInFlight = false
-    private var wzHostingShutdownInFlight = false
     private var wzLastHUDText = ""
     private var wzLastHUDUpdateTime = Date.distantPast
     private var wzLastHUDControlFlags = UInt32.max
@@ -379,9 +377,8 @@ final class laramgr: ObservableObject {
         prepareWZEnvironment(connectWhenReady: false)
     }
     func setWZControlPanelPresented(_ presented: Bool) {
-        // Core 2.2 keeps its application scene portrait (mask 2) and uses the
-        // system HUD window as the single control surface in both apps. Do not
-        // mount a second SwiftUI copy or rotate the LARA scene underneath it.
+        // The hosted menu is the single control surface in both apps. Do not
+        // mount a second SwiftUI copy or rotate the Lara scene underneath it.
         showWZControlPanel = false
         if presented {
             if !wzGameHUDEnabled { setGameHUD(true) }
@@ -458,52 +455,46 @@ final class laramgr: ObservableObject {
             wzStatus = "王者荣耀启动地址无效"
             return
         }
-        // The Core system panel is already the controller. Keeping the SwiftUI
-        // copy mounted here caused the duplicated panels in device captures.
+        // The hosted menu is already the controller. Keeping the SwiftUI copy
+        // mounted here caused the duplicated panels in device captures.
         showWZControlPanel = false
         setGameHUD(true)
         wzLaunchEpoch &+= 1
         let launchEpoch = wzLaunchEpoch
-        _ = wzhud_prepare_game_launch()
-        // The helper only registers Lara's existing Core contexts. It never
-        // executes UIKit or RemoteCall inside SpringBoard, and failure never
-        // blocks launching the game.
-        wzStatus = "正在启动原版 Core 悬浮窗"
-        prepareWZContextHostAndOpen(url: url, epoch: launchEpoch)
+        wzStatus = "正在准备 AX 悬浮窗"
+        prepareWZLocalHUDAndOpen(url: url, epoch: launchEpoch, attempt: 0)
     }
 
-    private func prepareWZContextHostAndOpen(url: URL, epoch: UInt64) {
+    private func prepareWZLocalHUDAndOpen(
+        url: URL,
+        epoch: UInt64,
+        attempt: Int
+    ) {
         guard epoch == wzLaunchEpoch else { return }
-        guard !wzHostingInFlight else { return }
-        wzHostingInFlight = true
-        wzGameHUDStatus = "正在启动独立 HUD 托管进程"
-        wzWorker.async { [weak self] in
-            let hosted = wzhud_start_context_host_helper()
+        if wzhud_is_enabled() {
+            wzGameHUDActive = true
+            wzGameHUDStatus = "AX 本地双窗口已就绪"
+            wzStatus = "正在启动王者荣耀"
+            logmsg("(wz.hud) local AX controllers ready")
+            openWZGameURL(url, epoch: epoch)
+            return
+        }
+        guard attempt < 30 else {
             let reason = String(cString: wzhud_last_error())
-            DispatchQueue.main.async {
-                guard let self else { return }
-                self.wzHostingInFlight = false
-                guard epoch == self.wzLaunchEpoch else {
-                    if hosted {
-                        self.wzWorker.async {
-                            _ = wzhud_stop_context_host_helper()
-                        }
-                    }
-                    return
-                }
-                if hosted && wzhud_springboard_hosting_ready() {
-                    self.wzGameHUDActive = true
-                    self.wzGameHUDStatus = "原版 Core 菜单已由独立 HUD 进程托管"
-                    self.logmsg("(wz.hud) context helper ready; no SpringBoard RemoteCall")
-                } else {
-                    self.wzGameHUDActive = false
-                    self.wzGameHUDStatus = reason.isEmpty
-                        ? "HUD 托管失败，游戏仍继续启动"
-                        : "\(reason)（游戏仍继续启动）"
-                    self.logmsg("(wz.hud) context helper failed error=\(reason)")
-                }
-                self.openWZGameURL(url, epoch: epoch)
-            }
+            let message = reason.isEmpty ? "AX 本地双窗口注册超时" : reason
+            wzStatus = "AX 悬浮窗创建失败"
+            logmsg("(wz.hud) local AX controllers not ready error=\(message)")
+            hideGameHUD(message)
+            return
+        }
+        wzGameHUDStatus = "正在注册 AX 本地双窗口"
+        DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(50)) {
+            [weak self] in
+            self?.prepareWZLocalHUDAndOpen(
+                url: url,
+                epoch: epoch,
+                attempt: attempt + 1
+            )
         }
     }
 
@@ -683,10 +674,9 @@ final class laramgr: ObservableObject {
                 wzhud_set_transport_state(wzAttached, wzCanWrite, $0)
             }
             applyGameHUDPresentation()
-            // Core creates its system windows while the controller app is
-            // still foreground. Creating them only after smoba attaches means
-            // they belong to an already-backgrounded scene and never surface
-            // above the game.
+            // AX controllers and both local windows must exist before the app
+            // opens smoba. wzhud_is_enabled only becomes true after both
+            // registrations complete.
             let requested = wzhud_set_enabled(true)
             wzGameHUDActive = requested && wzhud_is_enabled()
             if wzAttached {
@@ -816,43 +806,18 @@ final class laramgr: ObservableObject {
     private func updateGameHUD(_ text: String) {
         guard wzGameHUDEnabled, wzGameHUDSessionArmed, wzAttached else { return }
         text.withCString { wzhud_update_text($0) }
-        wzGameHUDActive = wzhud_springboard_hosting_ready()
+        wzGameHUDActive = wzhud_is_enabled()
         let error = String(cString: wzhud_last_error())
-        wzGameHUDStatus = wzGameHUDActive ? "原版 Core 跨进程菜单运行中" :
-            (error.isEmpty ? "独立 HUD 托管进程启动中" : error)
+        wzGameHUDStatus = wzGameHUDActive ? "AX 双窗口运行中" :
+            (error.isEmpty ? "AX 双窗口未就绪" : error)
     }
     private func hideGameHUD(_ status: String) {
         wzGameHUDEnabled = false
         wzGameHUDSessionArmed = false
         wzGameHUDActive = false
         wzGameHUDStatus = status
-        if wzHostingShutdownInFlight {
-            wzGameHUDStatus = "正在停止独立 HUD 托管进程"
-            return
-        }
-        guard wzhud_springboard_hosting_ready() else {
-            wzhud_set_enabled(false)
-            return
-        }
-
-        wzHostingShutdownInFlight = true
-        wzWorker.async { [weak self] in
-            let removed = wzhud_stop_context_host_helper()
-            let reason = String(cString: wzhud_last_error())
-            DispatchQueue.main.async {
-                guard let self else { return }
-                self.wzHostingShutdownInFlight = false
-                wzhud_set_enabled(false)
-                if removed {
-                    self.logmsg("(wz.hud) context helper stopped")
-                } else {
-                    self.wzGameHUDStatus = reason.isEmpty
-                        ? "独立 HUD 托管进程停止不完整"
-                        : reason
-                    self.logmsg("(wz.hud) context helper stop failed error=\(reason)")
-                }
-            }
-        }
+        wzhud_set_enabled(false)
+        logmsg("(wz.hud) local AX controllers stopped")
     }
     private func startWZLoop() {
         guard wzTimer == nil else { return }
