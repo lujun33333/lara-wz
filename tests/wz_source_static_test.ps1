@@ -170,10 +170,29 @@ $hudSource = Get-Content -LiteralPath (Join-Path $root 'lara/kexploit/WZHUDBridg
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'performSelectorOnMainThread:withObject:waitUntilDone:' '直建 SpringBoard UIKit 未调度到真实主线程'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'direct_remote_invoke_on_main_result[\s\S]*NSInvocation' '缺少 DarkSpeed 式主线程 NSInvocation helper'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'SBMainWorkspace[\s\S]*sharedInstance[\s\S]*mainWindowScene' '直建浮球未绑定 SpringBoard mainWindowScene'
-Require-Text 'lara/kexploit/WZHUDBridge.mm' 'UILongPressGestureRecognizer[\s\S]*initWithTarget:action:[\s\S]*setMinimumPressDuration:[\s\S]*0\.0[\s\S]*setAllowableMovement:[\s\S]*10000\.0' '直建浮球未挂载可轮询的 SpringBoard 远端手势'
-Require-Text 'lara/kexploit/WZHUDBridge.mm' 'remoteCall, window,\s*"setUserInteractionEnabled:", 1[\s\S]*remoteCall, floatView,\s*"setUserInteractionEnabled:", 1[\s\S]*remoteCall, label,\s*"setUserInteractionEnabled:", 0' '远端窗口/浮球未接收触摸或 label 仍抢占事件'
-Require-Text 'lara/kexploit/WZHUDBridge.mm' 'wzhud_poll_direct_springboard_float_input[\s\S]*direct-input=begin[\s\S]*direct-input=move[\s\S]*direct-input=end[\s\S]*direct-input=tap' '缺少 SpringBoard 远端手势轮询与真机输入日志'
-Require-Text 'lara/kexploit/WZHUDBridge.mm' 'direct_set_remote_menu_visible_locked[\s\S]*CGSizeMake\(220\.0, 90\.0\)[\s\S]*g_directSpringBoardMenuTitle[\s\S]*direct-input=tap menu=%s' '远端浮球短按没有用户可见结果'
+Reject-Text 'lara/kexploit/WZHUDBridge.mm' 'UILongPressGestureRecognizer|direct-input=' '直建浮球仍保留远端手势轮询路径'
+Reject-Text 'lara/kexploit/WZHUDBridge.h' 'wzhud_poll_direct_springboard_float_input' '头文件仍暴露远端输入轮询 API'
+Reject-Text 'lara/classes/laramgr.swift' 'wzhud_poll_direct_springboard_float_input|wzDirectInputPollTick' '串行 worker 仍调用远端输入轮询'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'direct_remote_class\(remoteCall, "UIButton"\)' '远端浮球/菜单未创建 UIButton'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'addTarget:action:forControlEvents:[\s\S]{0,600}UIControlEventTouchUpInside|UIControlEventTouchUpInside[\s\S]{0,600}addTarget:action:forControlEvents:' '远端浮球/菜单未使用 UIButton target/action'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'g_directSpringBoardMenuWindow = menuWindow' '远端菜单未使用独立 UIWindow'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'direct_remote_create_persistent_invocation[\s\S]*retainArguments[\s\S]*direct_remote_sel\(remoteCall, "retain"\)' '远端可重复 invocation 或其参数未长期保留'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'writeToFile:atomically:encoding:error:' '远端功能按钮未通过 NSString 原子写命令文件'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' '\{ "头像", 10000 \}[\s\S]*\{ "血量", 10001 \}[\s\S]*\{ "回城", 10002 \}[\s\S]*\{ "射线", 10003 \}[\s\S]*\{ "方框", 10004 \}[\s\S]*\{ "自身视野", 10005 \}[\s\S]*\{ "敌方视野", 10006 \}[\s\S]*\{ "小地图", 10007 \}[\s\S]*\{ "地图调节", 10013 \}' '远端菜单缺少完整英雄/视野/地图功能 action'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' '\{ "野怪", 10008 \}[\s\S]*\{ "野怪实体", 10009 \}[\s\S]*\{ "野怪计时", 10010 \}[\s\S]*\{ "兵线", 10011 \}[\s\S]*\{ "兵线实体", 10012 \}[\s\S]*\{ "技能", 10014 \}' '远端菜单缺少主要兵野/技能功能 action'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' '\{ "左上", 20000 \}[\s\S]*\{ "右上", 20001 \}[\s\S]*\{ "左下", 20002 \}[\s\S]*\{ "右下", 20003 \}' '远端菜单缺少四角位置 action'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'removeItemAtPath:path error:nil[\s\S]{0,500}direct_remote_create_owned_string' '创建远端菜单前未清理旧命令文件'
+$directCommandPoll = [regex]::Match($hudSource, 'bool wzhud_poll_direct_springboard_commands[\s\S]*?bool wzhud_remove_direct_springboard_float').Value
+if (-not $directCommandPoll -or $directCommandPoll -notmatch 'fileExistsAtPath:[\s\S]{0,80}return false;') {
+    throw 'FAIL: 本地命令轮询没有在无文件时立即返回'
+}
+$idlePath = [regex]::Match($directCommandPoll, 'bool wzhud_poll_direct_springboard_commands[\s\S]*?return false;').Value
+if ($idlePath -match 'direct_remote_') {
+    throw 'FAIL: 本地命令轮询空闲路径仍会调用 direct_remote helper'
+}
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'stringWithContentsOfFile:[\s\S]*removeItemAtPath:[\s\S]*activate_control_main\(action\)[\s\S]*direct-command action=' '本地命令文件未按读取/删除/复用控制 action 处理'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'action >= 20000 && action <= 20003[\s\S]*direct_remote_set_rect_on_main' '位置命令没有仅在有命令时移动远端浮球'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'g_directSpringBoardFloatReady\.store\(true\);[\s\S]{0,220}direct_remote_build_menu_locked[\s\S]{0,500}return true;' '菜单构建失败仍可能撤销已发布浮球或阻断启动'
 $directFloat = [regex]::Match($hudSource, 'bool wzhud_create_direct_springboard_float[\s\S]*?bool wzhud_direct_springboard_float_ready').Value
 if (-not $directFloat -or $directFloat -match 'SBSAccessibilityWindowHostingController|registerWindowWithContextID|_contextId|450 \* NSEC_PER_MSEC|configure_metal_renderer_main|update_fallback_snapshot_main') {
     throw 'FAIL: SpringBoard 直建浮球仍依赖 context/hosting/450ms/Metal/fallback 门禁'
@@ -242,11 +261,11 @@ Require-Text 'lara/kexploit/WZHUDBridge.mm' 'apply_orientation_main[\s\S]*\[CATr
 Require-Text 'lara/kexploit/WZHUDBridge.mm' '450 \* NSEC_PER_MSEC' '缺少 Core context 450ms 稳定等待'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'g_contextValidationBaseline' '缺少三窗口 context 基线'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'g_validatedContextMask\.store\(validatedMask\);\s*g_contextsStable\.store\(validatedMask != 0\)' '完整或浮球 context 复核结果未进入启动门禁'
-Require-Text 'lara/kexploit/WZHUDBridge.h' 'wzhud_create_direct_springboard_float[\s\S]*wzhud_direct_springboard_float_ready[\s\S]*wzhud_poll_direct_springboard_float_input[\s\S]*wzhud_remove_direct_springboard_float' '缺少 SpringBoard 直建浮球生命周期/输入接口'
+Require-Text 'lara/kexploit/WZHUDBridge.h' 'wzhud_create_direct_springboard_float[\s\S]*wzhud_direct_springboard_float_ready[\s\S]*wzhud_poll_direct_springboard_commands[\s\S]*wzhud_remove_direct_springboard_float' '缺少 SpringBoard 直建浮球生命周期/本地命令接口'
 Reject-Text 'lara/kexploit/WZHUDBridge.h' 'wzhud_install_process_window_policy' '头文件仍暴露不属于 QXA105 菜单链的全局窗口策略'
 Require-Text 'lara/classes/laramgr.swift' 'rcinit\(process: "SpringBoard", migbypass: false\)' '启动链未建立 SpringBoard RemoteCall'
 Require-Text 'lara/classes/laramgr.swift' 'wzhud_create_direct_springboard_float\(process\)' '未调用 SpringBoard 直建浮球路径'
-Require-Text 'lara/classes/laramgr.swift' 'wzDirectInputPollTick % 3 == 0,[\s\S]*wzhud_direct_springboard_float_ready\(\)[\s\S]*wzhud_poll_direct_springboard_float_input\(\)' '远端浮球输入未在现有串行 WZ worker/timer 上限频轮询'
+Require-Text 'lara/classes/laramgr.swift' 'wzDirectCommandPollTick % 12 == 0[\s\S]*wzhud_poll_direct_springboard_commands\(\)' '本地命令文件未在现有串行 WZ worker 上按 5Hz 轮询'
 Reject-Text 'lara/classes/laramgr.swift' 'wzhud_prepare_game_launch\(|wzhud_contexts_stable\(|wzhud_register_springboard_hosting\(|wzhud_springboard_hosting_ready\(' '新启动链仍依赖旧 context/hosting 门禁'
 Require-Text 'lara/classes/laramgr.swift' 'private func openWZGameURL[\s\S]{0,180}guard epoch == wzLaunchEpoch else \{ return \}[\s\S]{0,120}UIApplication\.shared\.open' '游戏 URL 打开仍受 HUD 状态门禁'
 Require-Text 'lara/classes/laramgr.swift' 'let remoteProcess = sbProc\s*sbProc = nil[\s\S]*remoteProcess\?\.destroy\(\)' 'RemoteCall 销毁未先摘除共享引用'

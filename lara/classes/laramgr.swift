@@ -302,7 +302,7 @@ final class laramgr: ObservableObject {
     private var wzLastResult = ""
     private var wzLastResultTime = Date.distantPast
     private var wzTickNumber: UInt64 = 0
-    private var wzDirectInputPollTick: UInt64 = 0
+    private var wzDirectCommandPollTick: UInt64 = 0
     private var wzHostingInFlight = false
     private var wzHostingShutdownInFlight = false
     private var wzOwnsSpringBoardRemoteCall = false
@@ -942,13 +942,11 @@ final class laramgr: ObservableObject {
         timer.resume()
     }
     private func wzFrame() {
-        // Poll SpringBoard-owned gesture state on the same serial worker as
-        // all other RemoteCall work. 20 Hz is responsive without issuing a
-        // main-thread NSInvocation on every 60 FPS collection tick.
-        wzDirectInputPollTick &+= 1
-        if wzDirectInputPollTick % 3 == 0,
-           wzhud_direct_springboard_float_ready() {
-            _ = wzhud_poll_direct_springboard_float_input()
+        // The remote UIKit buttons write a cache command file themselves.
+        // This 5 Hz local check performs no RemoteCall work while idle.
+        wzDirectCommandPollTick &+= 1
+        if wzDirectCommandPollTick % 12 == 0 {
+            _ = wzhud_poll_direct_springboard_commands()
         }
         let request = DispatchQueue.main.sync {
             var canvasWidth = Double(UIScreen.main.bounds.width)

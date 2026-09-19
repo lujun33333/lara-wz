@@ -118,11 +118,16 @@ for marker in setDisableUpdateMask: \
     SBMainWorkspace \
     mainWindowScene \
     setWindowScene: \
+    addTarget:action:forControlEvents: \
+    writeToFile:atomically:encoding:error: \
+    direct-command\ action= \
     performSelectorOnMainThread:withObject:waitUntilDone: \
     direct-springboard-float=ready; do
     LC_ALL=C grep -a -q "$marker" "$BIN" \
         || die "最终二进制缺少王者 HUD 标记：$marker"
 done
+LC_ALL=C grep -a -q 'direct-input=' "$BIN" \
+    && die "最终二进制仍混入会导致 SpringBoard 重载的远端输入轮询"
 [[ -f "$SRC_APP/heroatlas.bin" ]] \
     || die "最终 App 未包含英雄头像图集"
 [[ -f "$SRC_APP/core-mountain.png" ]] \
