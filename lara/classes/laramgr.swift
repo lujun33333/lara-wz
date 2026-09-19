@@ -535,7 +535,7 @@ final class laramgr: ObservableObject {
             return
         }
 
-        wzStatus = "正在连接 SpringBoard 并托管三窗口"
+        wzStatus = "正在连接 SpringBoard 并托管悬浮窗"
         wzRemoteCallInitEpoch = epoch
         rcinit(process: "SpringBoard", migbypass: false) { [weak self] success in
             guard let self else { return }
@@ -577,7 +577,7 @@ final class laramgr: ObservableObject {
             return
         }
         wzHostingInFlight = true
-        wzStatus = "正在向 SpringBoard 注册 Core 三窗口"
+        wzStatus = "正在向 SpringBoard 注册 Core 悬浮窗"
         wzWorker.async { [weak self, process] in
             let hosted = wzhud_register_springboard_hosting(process)
             let reason = String(cString: wzhud_last_error())
@@ -591,7 +591,7 @@ final class laramgr: ObservableObject {
                     self.wzGameHUDActive = false
                     self.wzRemoteCleanupPending = !cleanupComplete
                     self.wzStatus = reason.isEmpty
-                        ? "SpringBoard 三窗口托管失败"
+                        ? "SpringBoard 悬浮窗托管失败"
                         : reason
                     self.logmsg("(wz.hud) SpringBoard hosting failed error=\(reason)")
                     if cleanupComplete {
@@ -613,7 +613,7 @@ final class laramgr: ObservableObject {
         guard epoch == wzLaunchEpoch,
               wzhud_contexts_stable(),
               wzhud_springboard_hosting_ready() else {
-            wzStatus = "Core 三窗口托管状态已失效，已取消启动"
+            wzStatus = "Core 悬浮窗托管状态已失效，已取消启动"
             wzGameHUDActive = false
             logmsg("(wz.hud) launch cancelled because hosted contexts are no longer valid")
             return
