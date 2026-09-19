@@ -54,4 +54,7 @@ foreach ($entry in $icons.GetEnumerator()) {
         throw "FAIL: AX application icon is absent or changed: $($entry.Key)"
     }
 }
+if (Test-Path -LiteralPath (Join-Path $root 'lara/other/media.xcassets/AppIcon.appiconset')) {
+    throw 'FAIL: obsolete Lara AppIcon asset catalog remains in the product'
+}
 Write-Output 'PASS: AX 1.2.8 launcher labels, order, spacer, and launch wiring'
