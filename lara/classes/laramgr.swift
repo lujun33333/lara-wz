@@ -24,6 +24,8 @@ private let wzHUDActionHandler: @convention(c) (Int32) -> Void = { action in
             }
         case 2:
             laramgr.shared.launchWZGame()
+        case 3:
+            laramgr.shared.setGameHUD(false)
         default:
             break
         }
@@ -84,7 +86,9 @@ final class laramgr: ObservableObject {
     @Published var fileopinprogress: Bool = false
     @Published var testresult: String?
     #if !DISABLE_REMOTECALL
-    @Published var rcrunning: Bool = false
+    @Published var rcrunning: Bool = false {
+        didSet { if !rcrunning { resumeWZHostingRequests() } }
+    }
     @Published var eligibilitystate: Bool?
     @Published var eu1progress: Double = 0.0
     @Published var eu1running: Bool = false
@@ -108,10 +112,14 @@ final class laramgr: ObservableObject {
     @Published var showrespring: Bool = false
     
     @Published var showLogs: Bool = false
-    @Published var showWZControlPanel: Bool = false
     
     var sbProc: RemoteCall?
-    private var wzSpringBoardInstallRunning = false
+    private var wzSpringBoardInstallRunning = false {
+        didSet { if !wzSpringBoardInstallRunning { resumeWZHostingRequests() } }
+    }
+    private var wzHostingRequests: [() -> Void] = []
+    private var wzTerminating = false
+    private var wzLaunchPending = false
     lazy var ytProc = RemoteCall(process: "youtube", useMigFilterBypass: false)
     @Published var wzAttached: Bool = false
     @Published var wzRunning: Bool = false
@@ -125,47 +133,15 @@ final class laramgr: ObservableObject {
     @Published var wzGameHUDStatus: String = "未启动"
     @Published var wzMeasuredFPS: Double = 0
     @Published var wzChainDiagnostic: String = "等待采集"
-    @Published var wzGameHUDPosition: Int = {
-        let value = UserDefaults.standard.object(forKey: "wzGameHUDPosition") as? Int ?? 1
-        return min(max(value, 0), 3)
-    }()
-    @Published var wzGameHUDLargeFont: Bool = UserDefaults.standard.bool(forKey: "wzGameHUDLargeFont")
-    @Published var wzGameHUDSingleLine: Bool = UserDefaults.standard.bool(forKey: "wzGameHUDSingleLine")
-    @Published var wzGameHUDInverted: Bool = UserDefaults.standard.bool(forKey: "wzGameHUDInverted")
-    @Published var wzShowAvatar: Bool = true
-    @Published var wzShowHealth: Bool = true
-    @Published var wzShowRecall: Bool = true
-    @Published var wzShowRay: Bool = false
-    @Published var wzShowBox: Bool = false
-    @Published var wzShowSelfVision: Bool = false
-    @Published var wzShowEnemyVision: Bool = true
-    @Published var wzShowMinimap: Bool = true
-    @Published var wzShowMapAdjustment: Bool = true
-    @Published var wzShowMonster: Bool = false
-    @Published var wzShowMonsterEntity: Bool = false
-    @Published var wzShowMonsterTimer: Bool = false
-    @Published var wzShowSoldier: Bool = false
-    @Published var wzShowSoldierEntity: Bool = false
-    @Published var wzShowSkill: Bool = false
-    @Published var wzMinimapSize: Double = 150
-    @Published var wzMinimapX: Double = 0
-    @Published var wzMinimapY: Double = 0
-    @Published var wzRayWidth: Double = 1.5
-    @Published var wzBoxWidth: Double = 1.5
-    @Published var wzAvatarScale: Double = 1.0
-    @Published var wzMonsterTextSize: Double = 13
-    @Published var wzSkillX: Double = 0
-    @Published var wzSkillY: Double = 0
-    @Published var wzExposedLineRGBA: UInt32 = 0xEF525BFF
-    @Published var wzExposedHealthRGBA: UInt32 = 0x52DA84FF
-    @Published var wzDefaultLineRGBA: UInt32 = 0xF1B942FF
-    @Published var wzDefaultHealthRGBA: UInt32 = 0x52DA84FF
     private var wzGameHUDSessionArmed: Bool = false
-    var wzGameHUDKeepsRemoteCallAlive: Bool { wzGameHUDSessionArmed }
     private var wzFPSWindowStart = Date()
     private var wzFPSFrameCount: Int = 0
-    private var audioEngine: AVAudioEngine?
-    private var audioPlayer: AVAudioPlayerNode?
+    private var audioPlayer: AVAudioPlayer?
+    private var audioBackgroundTask: UIBackgroundTaskIdentifier = .invalid
+    private var audioObservers: [NSObjectProtocol] = []
+    private var audioRecoveryEpoch: UInt64 = 0
+    private var audioKeepAliveEnabled = false
+    private var audioWatchdog: DispatchSourceTimer?
     
     static let shared = laramgr()
     static let fontpath = "/System/Library/Fonts/Core/SFUI.ttf"
@@ -234,8 +210,6 @@ final class laramgr: ObservableObject {
                     globallogger.log(String(format: "(ds) 内核基址：0x%llx", self.kernbase))
                     globallogger.log(String(format: "(ds) 内核偏移：0x%llx", self.kernslide))
                     globallogger.divider()
-                    // 内存初始化成功即开启常驻保活，与具体功能开关解耦
-                    self.startBackgroundAudio()
                 } else {
                     self.dsfailed = true
                     self.logmsg("\n漏洞利用失败。\n")
@@ -381,7 +355,6 @@ final class laramgr: ObservableObject {
     func setWZControlPanelPresented(_ presented: Bool) {
         // The hosted menu is the single control surface in both apps. Do not
         // mount a second SwiftUI copy or rotate the Lara scene underneath it.
-        showWZControlPanel = false
         if presented {
             if !wzGameHUDEnabled { setGameHUD(true) }
             wzhud_set_panel_visible(true)
@@ -406,6 +379,7 @@ final class laramgr: ObservableObject {
                 if success {
                     self.prepareWZEnvironment(connectWhenReady: connectWhenReady)
                 } else {
+                    self.wzLaunchPending = false
                     self.wzStatus = "内核环境初始化失败"
                 }
             }
@@ -423,7 +397,9 @@ final class laramgr: ObservableObject {
                     self.hasOffsets = loaded
                     self.wzRunning = false
                     if loaded {
-                        if connectWhenReady {
+                        if self.wzLaunchPending {
+                            self.launchWZGame()
+                        } else if connectWhenReady {
                             self.wzStatus = "内核偏移已就绪，正在连接王者荣耀"
                             self.logmsg("(wz) 内核偏移已就绪，继续连接 smoba")
                             self.wzAttach()
@@ -433,6 +409,7 @@ final class laramgr: ObservableObject {
                             self.setWZControlPanelPresented(true)
                         }
                     } else {
+                        self.wzLaunchPending = false
                         self.wzStatus = "内核偏移获取失败"
                         self.logmsg("(wz) kernelcache 获取或偏移解析失败")
                     }
@@ -440,7 +417,9 @@ final class laramgr: ObservableObject {
             }
             return
         }
-        if connectWhenReady {
+        if wzLaunchPending {
+            launchWZGame()
+        } else if connectWhenReady {
             wzAttach()
         } else {
             wzStatus = "内核环境已就绪，可以启动游戏"
@@ -448,78 +427,123 @@ final class laramgr: ObservableObject {
         }
     }
     func launchWZGame() {
+        guard !wzTerminating else { return }
         guard dsready, hasOffsets else {
-            wzStatus = "请先完成内核初始化，再启动游戏"
+            wzLaunchPending = true
+            wzStatus = "正在初始化环境，完成后自动启动游戏"
             initializeWZEnvironment()
             return
         }
-        guard let url = URL(string: "smoba1104466820://") else {
-            wzStatus = "王者荣耀启动地址无效"
-            return
-        }
+        wzLaunchPending = false
         // The hosted menu is already the controller. Keeping the SwiftUI copy
         // mounted here caused the duplicated panels in device captures.
-        showWZControlPanel = false
         setGameHUD(true)
-        prepareWZSpringBoardHosting()
         wzLaunchEpoch &+= 1
         let launchEpoch = wzLaunchEpoch
         wzGameHUDActive = wzhud_is_enabled()
         let reason = String(cString: wzhud_last_error())
         wzGameHUDStatus = wzGameHUDActive
             ? "本地双窗口已就绪"
-            : (reason.isEmpty ? "悬浮窗未就绪，游戏继续启动" : reason)
+            : (reason.isEmpty ? "悬浮窗未就绪，等待跨 App 托管" : reason)
         wzStatus = "正在启动王者荣耀"
-        logmsg("(wz.hud) launch is independent of HUD ready=\(wzGameHUDActive ? "yes" : "no") error=\(reason.isEmpty ? "none" : reason)")
-        openWZGameURL(url, epoch: launchEpoch)
+        logmsg("(wz.hud) preparing AX host launch ready=\(wzGameHUDActive ? "yes" : "no") error=\(reason.isEmpty ? "none" : reason)")
+        prepareWZSpringBoardHosting { [weak self] success in
+            guard let self, launchEpoch == self.wzLaunchEpoch else { return }
+            guard success else {
+                self.wzStatus = "跨 App 托管失败，游戏未启动"
+                return
+            }
+            self.openWZGame(epoch: launchEpoch)
+        }
     }
 
-    // AX's working iOS 26 path creates two SpringBoard UIWindow/CALayerHost
-    // mirrors after the two local contexts exist. RemoteCall setup runs beside
-    // game launch; it is never a condition for opening the smoba URL.
-    private func prepareWZSpringBoardHosting() {
-        guard dsready, wzGameHUDSessionArmed else { return }
-        if wzhud_springboard_hosting_ready() {
-            wzGameHUDStatus = "跨 App 双窗口运行中"
+    // AX orders mode 0 cleanup, mode 1 installation, then game launch.
+    // AX failure callbacks restore controls/report the error; only success
+    // reaches the LSApplicationWorkspace launch callback.
+    private func resumeWZHostingRequests() {
+        guard !rcrunning, !wzSpringBoardInstallRunning, !wzHostingRequests.isEmpty else { return }
+        let requests = wzHostingRequests
+        wzHostingRequests.removeAll()
+        DispatchQueue.main.async { requests.forEach { $0() } }
+    }
+
+    private func prepareWZSpringBoardHosting(completion: @escaping (Bool) -> Void) {
+        guard !wzTerminating else { completion(false); return }
+        guard dsready, wzGameHUDSessionArmed else { completion(false); return }
+        if rcrunning || wzSpringBoardInstallRunning {
+            wzHostingRequests.append { [weak self] in
+                guard let self else { return }
+                self.prepareWZSpringBoardHosting(completion: completion)
+            }
             return
         }
         if rcready, let remoteProcess = sbProc {
-            installWZSpringBoardHosting(remoteProcess)
-            return
-        }
-        guard !wzSpringBoardInstallRunning else { return }
-        if rcrunning {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-                guard let self, self.wzGameHUDSessionArmed else { return }
-                self.prepareWZSpringBoardHosting()
-            }
+            installWZSpringBoardHosting(remoteProcess, completion: completion)
             return
         }
         wzSpringBoardInstallRunning = true
-        logmsg("(wz.hud) initializing SpringBoard RemoteCall without blocking game launch")
+        logmsg("(wz.hud) initializing SpringBoard RemoteCall before host rebuild")
         rcinit(process: "SpringBoard", migbypass: false) { [weak self] success in
             guard let self else { return }
-            self.wzSpringBoardInstallRunning = false
-            guard success, self.wzGameHUDSessionArmed,
-                  let remoteProcess = self.sbProc else {
+            guard success else {
+                self.wzSpringBoardInstallRunning = false
                 let detail = self.rcLastError ?? "RemoteCall 初始化失败"
                 self.wzGameHUDStatus = "跨 App 托管失败：\(detail)"
                 self.logmsg("(wz.hud) SpringBoard RemoteCall unavailable: \(detail)")
+                completion(false)
                 return
             }
-            self.installWZSpringBoardHosting(remoteProcess)
+            guard self.wzGameHUDSessionArmed, let remoteProcess = self.sbProc else {
+                // AX serializes init/mode0/mode1 on one worker. If this Swift
+                // session was canceled while init ran elsewhere, immediately
+                // dispose the now-orphaned RC before another request starts.
+                if let abandonedProcess = self.sbProc {
+                    self.sbProc = nil
+                    self.rcready = false
+                    self.wzWorker.async { [weak self] in
+                        abandonedProcess.destroy()
+                        DispatchQueue.main.async {
+                            self?.wzSpringBoardInstallRunning = false
+                            completion(false)
+                        }
+                    }
+                } else {
+                    self.wzSpringBoardInstallRunning = false
+                    completion(false)
+                }
+                return
+            }
+            self.wzSpringBoardInstallRunning = false
+            self.installWZSpringBoardHosting(remoteProcess, completion: completion)
         }
     }
 
-    private func installWZSpringBoardHosting(_ remoteProcess: RemoteCall) {
-        guard wzGameHUDSessionArmed, !wzSpringBoardInstallRunning else { return }
+    private func installWZSpringBoardHosting(_ remoteProcess: RemoteCall, completion: @escaping (Bool) -> Void) {
+        guard wzGameHUDSessionArmed, !wzSpringBoardInstallRunning else { completion(false); return }
         wzSpringBoardInstallRunning = true
         wzWorker.async { [weak self, remoteProcess] in
+            let removed = wzhud_unregister_springboard_hosts(remoteProcess)
+            if !removed {
+                self?.logmsg("(wz.hud) mode 0 unhost reported failure; continuing AX mode 1 rebuild")
+            }
             let ready = wzhud_register_springboard_hosts(remoteProcess)
             let detail = String(cString: wzhud_last_error())
+            // AX mode 1 failure 0x1006ff33c -> 0x1006ffba8 tears down RC
+            // after rolling back the successfully created menu host.
+            let installFailed = !ready
+            if installFailed { remoteProcess.destroy() }
+            // AX 0x10007dbc4-cc: successful host setup sleeps 0x124f80 us
+            // on its worker before dispatching the main launch callback.
+            if ready { usleep(1_200_000) }
             DispatchQueue.main.async {
                 guard let self else { return }
+                if installFailed, self.sbProc === remoteProcess {
+                    self.sbProc = nil
+                    self.rcready = false
+                    self.rcLastError = detail.isEmpty ? "跨 App 双窗口托管失败" : detail
+                }
                 self.wzSpringBoardInstallRunning = false
+                defer { completion(ready && self.wzGameHUDSessionArmed && !self.wzTerminating) }
                 guard self.wzGameHUDSessionArmed else { return }
                 self.wzGameHUDStatus = ready
                     ? "跨 App 双窗口运行中"
@@ -529,24 +553,22 @@ final class laramgr: ObservableObject {
         }
     }
 
-    private func openWZGameURL(_ url: URL, epoch: UInt64) {
+    private func openWZGame(epoch: UInt64) {
+        guard !wzTerminating, epoch == wzLaunchEpoch else { return }
+        logmsg("(wz.launch) opening com.tencent.smoba epoch=\(epoch)")
+        // AX dispatches its success block to the main queue once, then calls
+        // LSApplicationWorkspace synchronously from that block.
+        let opened = wzhud_open_smoba_application()
         guard epoch == wzLaunchEpoch else { return }
-        logmsg("(wz.launch) opening smoba URL epoch=\(epoch)")
-        UIApplication.shared.open(url, options: [:]) { [weak self] opened in
-            DispatchQueue.main.async {
-                guard let self else { return }
-                guard epoch == self.wzLaunchEpoch else { return }
-                self.logmsg("(wz.launch) open callback opened=\(opened ? "yes" : "no") epoch=\(epoch)")
-                if opened {
-                    self.wzStatus = "游戏已启动，等待 smoba 进程"
-                    self.scheduleWZAttachAfterLaunch(attempt: 0)
-                } else {
-                    self.wzStatus = "未能启动王者荣耀"
-                    self.logmsg("(wz) smoba URL scheme 启动失败")
-                    self.wzLaunchEpoch &+= 1
-                    self.hideGameHUD("游戏启动失败，已注销悬浮窗")
-                }
-            }
+        logmsg("(wz.launch) open callback opened=\(opened ? "yes" : "no") epoch=\(epoch)")
+        if opened {
+            wzStatus = "游戏已启动，等待 smoba 进程"
+            scheduleWZAttachAfterLaunch(attempt: 0)
+        } else {
+            wzStatus = "未能启动王者荣耀"
+            logmsg("(wz) LSApplicationWorkspace 启动失败")
+            wzLaunchEpoch &+= 1
+            hideGameHUD("游戏启动失败，已注销悬浮窗")
         }
     }
     private func scheduleWZAttachAfterLaunch(attempt: Int) {
@@ -573,7 +595,7 @@ final class laramgr: ObservableObject {
             let transportReady = connected && wz_transport_ready()
             let capabilities = transportReady ? wz_transport_capabilities() : 0
             let backendCanWrite = transportReady && wz_transport_can_write()
-            // 王者 11.4.10103 当前只同步了 Core/Koi 的只读采集链。
+            // The AX-aligned profile remains read-only for this game build.
             // 未经该版本验证的王者写偏移不得因 mapped-pages 可写而解锁。
             let canWrite = false
             let transportName = transportReady ? String(cString: wz_transport_name()) : "none"
@@ -598,17 +620,13 @@ final class laramgr: ObservableObject {
                     transportName.withCString {
                         wzhud_set_transport_state(true, self.wzCanWrite, $0)
                     }
-                    var hudConfig = self.wzHUDConfig()
-                    wzhud_set_wz_config(&hudConfig)
                     self.logmsg("(wz) connected pid=\(pid) UnityFramework=0x\(String(base, radix: 16)) transport=\(transportName) backendWrite=\(backendCanWrite ? "yes" : "no") profileWrite=disabled")
                     self.wzGameHUDEnabled = true
                     self.wzGameHUDSessionArmed = true
                     UserDefaults.standard.set(false, forKey: "wzGameHUDEnabled")
-                    self.applyGameHUDPresentation()
-                    // Core creates QXA105/QXA110 exactly once from the scene
-                    // controller. A game-memory attach only updates transport
-                    // and snapshot state; it never re-enters window creation
-                    // after smoba has foregrounded.
+                    // AX creates the hosted window pair before launching the
+                    // game. Attaching memory only updates transport/snapshots;
+                    // it must not re-enter window creation after foregrounding.
                     let requested = wzhud_is_enabled()
                     self.startWZLoop()
                     self.updateGameHUD("王者已连接\n等待功能开关")
@@ -667,7 +685,6 @@ final class laramgr: ObservableObject {
                 self.wzCanWrite = false
                 self.wzMeasuredFPS = 0
                 self.wzChainDiagnostic = "已断开"
-                self.resetWZFeatureState()
                 self.wzRunning = false
                 self.wzStatus = "已断开"
                 self.hideGameHUD("已断开")
@@ -676,37 +693,15 @@ final class laramgr: ObservableObject {
         }
     }
 
-    private func resetWZFeatureState() {
-        wzShowAvatar = true
-        wzShowHealth = true
-        wzShowRecall = true
-        wzShowRay = false
-        wzShowBox = false
-        wzShowSelfVision = false
-        wzShowEnemyVision = true
-        wzShowMinimap = true
-        wzShowMapAdjustment = true
-        wzShowMonster = false
-        wzShowMonsterEntity = false
-        wzShowMonsterTimer = false
-        wzShowSoldier = false
-        wzShowSoldierEntity = false
-        wzShowSkill = false
-        var config = wzHUDConfig()
-        wzhud_set_wz_config(&config)
-    }
 
     func setGameHUD(_ enabled: Bool) {
         wzGameHUDEnabled = enabled
         UserDefaults.standard.set(false, forKey: "wzGameHUDEnabled")
         if enabled {
             wzGameHUDSessionArmed = true
-            var config = wzHUDConfig()
-            wzhud_set_wz_config(&config)
             wzTransportName.withCString {
                 wzhud_set_transport_state(wzAttached, wzCanWrite, $0)
             }
-            applyGameHUDPresentation()
             // AX controllers and both local windows must exist before the app
             // opens smoba. wzhud_is_enabled only becomes true after both
             // registrations complete.
@@ -725,117 +720,6 @@ final class laramgr: ObservableObject {
             hideGameHUD("已关闭")
         }
     }
-    func setGameHUDPosition(_ position: Int) {
-        wzGameHUDPosition = min(max(position, 0), 3)
-        UserDefaults.standard.set(wzGameHUDPosition, forKey: "wzGameHUDPosition")
-        applyGameHUDPresentation()
-    }
-    func setGameHUDLargeFont(_ enabled: Bool) {
-        wzGameHUDLargeFont = enabled
-        UserDefaults.standard.set(enabled, forKey: "wzGameHUDLargeFont")
-        applyGameHUDPresentation()
-    }
-    func setGameHUDSingleLine(_ enabled: Bool) {
-        wzGameHUDSingleLine = enabled
-        UserDefaults.standard.set(enabled, forKey: "wzGameHUDSingleLine")
-        applyGameHUDPresentation()
-    }
-    func setGameHUDInverted(_ enabled: Bool) {
-        wzGameHUDInverted = enabled
-        UserDefaults.standard.set(enabled, forKey: "wzGameHUDInverted")
-        applyGameHUDPresentation()
-    }
-    private func wzFeatureFlags() -> UInt32 {
-        var flags: UInt32 = 0
-        if wzShowAvatar { flags |= UInt32(WZESP_SHOW_AVATAR) }
-        if wzShowHealth { flags |= UInt32(WZESP_SHOW_HEALTH) }
-        if wzShowRecall { flags |= UInt32(WZESP_SHOW_RECALL) }
-        if wzShowRay { flags |= UInt32(WZESP_SHOW_RAY) }
-        if wzShowBox { flags |= UInt32(WZESP_SHOW_BOX) }
-        if wzShowSelfVision { flags |= UInt32(WZESP_SHOW_SELF_VISION) }
-        if wzShowEnemyVision { flags |= UInt32(WZESP_SHOW_ENEMY_VISION) }
-        if wzShowMinimap { flags |= UInt32(WZESP_SHOW_MINIMAP) }
-        if wzShowMapAdjustment { flags |= UInt32(WZESP_SHOW_MAP_ADJUSTMENT) }
-        if wzShowMonster { flags |= UInt32(WZESP_SHOW_MONSTER) }
-        if wzShowMonsterEntity { flags |= UInt32(WZESP_SHOW_MONSTER_ENTITY) }
-        if wzShowMonsterTimer { flags |= UInt32(WZESP_SHOW_MONSTER_TIMER) }
-        if wzShowSoldier { flags |= UInt32(WZESP_SHOW_SOLDIER) }
-        if wzShowSoldierEntity { flags |= UInt32(WZESP_SHOW_SOLDIER_ENTITY) }
-        if wzShowSkill { flags |= UInt32(WZESP_SHOW_SKILL) }
-        return flags & UInt32(WZESP_READ_FEATURES)
-    }
-    private func wzHUDConfig() -> wzesp_config_t {
-        var config = wzesp_config_t()
-        config.flags = wzFeatureFlags()
-        config.minimapSize = Float(min(max(wzMinimapSize, 60), 520))
-        config.minimapX = Float(min(max(wzMinimapX, -300), 300))
-        config.minimapY = Float(min(max(wzMinimapY, -200), 200))
-        config.rayWidth = Float(min(max(wzRayWidth, 0.5), 6))
-        config.boxWidth = Float(min(max(wzBoxWidth, 0.5), 6))
-        config.avatarScale = Float(min(max(wzAvatarScale, 0.5), 2))
-        config.monsterTextSize = Float(min(max(wzMonsterTextSize, 9), 28))
-        config.skillX = Float(min(max(wzSkillX, -300), 300))
-        config.skillY = Float(min(max(wzSkillY, -40), 260))
-        config.exposedLineRGBA = wzExposedLineRGBA
-        config.exposedHealthRGBA = wzExposedHealthRGBA
-        config.defaultLineRGBA = wzDefaultLineRGBA
-        config.defaultHealthRGBA = wzDefaultHealthRGBA
-        return config
-    }
-    func setWZFeature(_ flag: UInt32, enabled: Bool) {
-        guard (flag & UInt32(WZESP_ALL_FEATURES)) != 0 else { return }
-        switch flag {
-        case UInt32(WZESP_SHOW_AVATAR): wzShowAvatar = enabled
-        case UInt32(WZESP_SHOW_HEALTH): wzShowHealth = enabled
-        case UInt32(WZESP_SHOW_RECALL): wzShowRecall = enabled
-        case UInt32(WZESP_SHOW_RAY): wzShowRay = enabled
-        case UInt32(WZESP_SHOW_BOX): wzShowBox = enabled
-        case UInt32(WZESP_SHOW_SELF_VISION): wzShowSelfVision = enabled
-        case UInt32(WZESP_SHOW_ENEMY_VISION): wzShowEnemyVision = enabled
-        case UInt32(WZESP_SHOW_MINIMAP): wzShowMinimap = enabled
-        case UInt32(WZESP_SHOW_MAP_ADJUSTMENT): wzShowMapAdjustment = enabled
-        case UInt32(WZESP_SHOW_MONSTER): wzShowMonster = enabled
-        case UInt32(WZESP_SHOW_MONSTER_ENTITY): wzShowMonsterEntity = enabled
-        case UInt32(WZESP_SHOW_MONSTER_TIMER): wzShowMonsterTimer = enabled
-        case UInt32(WZESP_SHOW_SOLDIER): wzShowSoldier = enabled
-        case UInt32(WZESP_SHOW_SOLDIER_ENTITY): wzShowSoldierEntity = enabled
-        case UInt32(WZESP_SHOW_SKILL): wzShowSkill = enabled
-        default: return
-        }
-        var config = wzHUDConfig()
-        wzhud_set_wz_config(&config)
-        if enabled && !wzGameHUDEnabled { setGameHUD(true) }
-    }
-    func syncWZPresentation() {
-        var config = wzHUDConfig()
-        wzhud_set_wz_config(&config)
-    }
-    func cycleWZColor(_ slot: Int) {
-        let palette: [UInt32] = [
-            0xEF525BFF, 0x52DA84FF, 0xF1B942FF,
-            0x4AA3FFFF, 0xB66EFFFF, 0xFFFFFFFF
-        ]
-        func next(_ value: UInt32) -> UInt32 {
-            guard let index = palette.firstIndex(of: value) else { return palette[0] }
-            return palette[(index + 1) % palette.count]
-        }
-        switch slot {
-        case 1: wzExposedLineRGBA = next(wzExposedLineRGBA)
-        case 2: wzExposedHealthRGBA = next(wzExposedHealthRGBA)
-        case 3: wzDefaultLineRGBA = next(wzDefaultLineRGBA)
-        case 4: wzDefaultHealthRGBA = next(wzDefaultHealthRGBA)
-        default: return
-        }
-        syncWZPresentation()
-    }
-    private func applyGameHUDPresentation() {
-        wzhud_set_presentation(
-            Int32(wzGameHUDPosition),
-            wzGameHUDLargeFont,
-            wzGameHUDSingleLine,
-            wzGameHUDInverted
-        )
-    }
     private func updateGameHUD(_ text: String) {
         guard wzGameHUDEnabled, wzGameHUDSessionArmed, wzAttached else { return }
         text.withCString { wzhud_update_text($0) }
@@ -845,19 +729,14 @@ final class laramgr: ObservableObject {
             (error.isEmpty ? "双窗口未就绪" : error)
     }
     private func hideGameHUD(_ status: String) {
+        wzLaunchPending = false
         wzGameHUDEnabled = false
         wzGameHUDSessionArmed = false
         wzGameHUDActive = false
         wzGameHUDStatus = status
-        if let remoteProcess = sbProc,
-           wzhud_springboard_hosting_ready() || wzSpringBoardInstallRunning {
-            wzWorker.async { [remoteProcess] in
-                let removed = wzhud_unregister_springboard_hosts(remoteProcess)
-                globallogger.log("(wz.hud) SpringBoard CALayerHost removed=\(removed ? "yes" : "no")")
-            }
+        rcdestroy { [weak self] in
+            self?.logmsg("(wz.hud) remote mode 0 completed; local windows stopped")
         }
-        wzhud_set_enabled(false)
-        logmsg("(wz.hud) local windows stopped")
     }
     private func startWZLoop() {
         guard wzTimer == nil else { return }
@@ -938,7 +817,6 @@ final class laramgr: ObservableObject {
                     self.wzTransportName = "none"
                     self.wzTransportCapabilities = 0
                     self.wzCanWrite = false
-                    self.resetWZFeatureState()
                     self.wzRunning = false
                     self.wzStatus = "smoba/UnityFramework 已失效，等待重新连接"
                     self.hideGameHUD("目标已断开")
@@ -968,10 +846,8 @@ final class laramgr: ObservableObject {
         if shouldLog { logmsg("(wz-frame) " + text) }
         if shouldLog || shouldUpdateHUD || configChanged || sampledFPS != nil {
             let epoch = request.0
-            let publishedConfig = config
             DispatchQueue.main.async { [weak self] in
                 guard let self, self.wzEpoch == epoch else { return }
-                self.applyWZConfigToPublished(publishedConfig)
                 if shouldLog { self.wzStatus = text }
                 if shouldUpdateHUD { self.updateGameHUD(hudText) }
                 if let sampledFPS { self.wzMeasuredFPS = sampledFPS }
@@ -1006,80 +882,184 @@ final class laramgr: ObservableObject {
             config.monsterTextSize.bitPattern, config.skillX.bitPattern,
             config.skillY.bitPattern, config.exposedLineRGBA,
             config.exposedHealthRGBA, config.defaultLineRGBA,
-            config.defaultHealthRGBA
+            config.defaultHealthRGBA, config.skillSize.bitPattern
         ]
         for scalar in scalars {
             value = (value ^ UInt64(scalar)) &* 0x100000001B3
         }
+        for scalar in [config.clickX.bitPattern, config.clickY.bitPattern,
+                       UInt64(config.clickCoordinatesValid),
+                       UInt64(config.clickSpaceFixed)] {
+            value = (value ^ scalar) &* 0x100000001B3
+        }
         return value
     }
 
-    private func applyWZConfigToPublished(_ config: wzesp_config_t) {
-        let flags = config.flags & UInt32(WZESP_READ_FEATURES)
-        wzShowAvatar = flags & UInt32(WZESP_SHOW_AVATAR) != 0
-        wzShowHealth = flags & UInt32(WZESP_SHOW_HEALTH) != 0
-        wzShowRecall = flags & UInt32(WZESP_SHOW_RECALL) != 0
-        wzShowRay = flags & UInt32(WZESP_SHOW_RAY) != 0
-        wzShowBox = flags & UInt32(WZESP_SHOW_BOX) != 0
-        wzShowSelfVision = flags & UInt32(WZESP_SHOW_SELF_VISION) != 0
-        wzShowEnemyVision = flags & UInt32(WZESP_SHOW_ENEMY_VISION) != 0
-        wzShowMinimap = flags & UInt32(WZESP_SHOW_MINIMAP) != 0
-        wzShowMapAdjustment = flags & UInt32(WZESP_SHOW_MAP_ADJUSTMENT) != 0
-        wzShowMonster = flags & UInt32(WZESP_SHOW_MONSTER) != 0
-        wzShowMonsterEntity = flags & UInt32(WZESP_SHOW_MONSTER_ENTITY) != 0
-        wzShowMonsterTimer = flags & UInt32(WZESP_SHOW_MONSTER_TIMER) != 0
-        wzShowSoldier = flags & UInt32(WZESP_SHOW_SOLDIER) != 0
-        wzShowSoldierEntity = flags & UInt32(WZESP_SHOW_SOLDIER_ENTITY) != 0
-        wzShowSkill = flags & UInt32(WZESP_SHOW_SKILL) != 0
-        wzMinimapSize = Double(config.minimapSize)
-        wzMinimapX = Double(config.minimapX)
-        wzMinimapY = Double(config.minimapY)
-        wzRayWidth = Double(config.rayWidth)
-        wzBoxWidth = Double(config.boxWidth)
-        wzAvatarScale = Double(config.avatarScale)
-        wzMonsterTextSize = Double(config.monsterTextSize)
-        wzSkillX = Double(config.skillX)
-        wzSkillY = Double(config.skillY)
-        wzExposedLineRGBA = config.exposedLineRGBA
-        wzExposedHealthRGBA = config.exposedHealthRGBA
-        wzDefaultLineRGBA = config.defaultLineRGBA
-        wzDefaultHealthRGBA = config.defaultHealthRGBA
+
+    // AX starts the audio session before creating its first window.
+    func startBackgroundAudio() {
+        guard !wzTerminating else { return }
+        audioKeepAliveEnabled = true
+        installAudioObservers()
+        if audioWatchdog == nil {
+            // AX 0x100004694: main-queue watchdog, 1s period, 100ms leeway.
+            let timer = DispatchSource.makeTimerSource(queue: .main)
+            timer.schedule(deadline: .now() + 1, repeating: .seconds(1), leeway: .milliseconds(100))
+            timer.setEventHandler { [weak self] in
+                guard let self, self.audioKeepAliveEnabled,
+                      self.audioPlayer?.isPlaying != true else { return }
+                self.recoverBackgroundAudio()
+            }
+            audioWatchdog = timer
+            timer.resume()
+        }
+        if !playBackgroundAudio() { recoverBackgroundAudio() }
     }
 
-    // 静音音频常驻后台：让系统认为 app 仍在后台“播放”，从而使采集线程不被挂起
-    private func startBackgroundAudio() {
-        stopBackgroundAudio()
-        let engine = AVAudioEngine()
-        let player = AVAudioPlayerNode()
-        let format = AVAudioFormat(standardFormatWithSampleRate: 44100, channels: 1)!
-        guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 2048) else { return }
-        buffer.frameLength = 2048
-        if let ch = buffer.floatChannelData?[0] {
-            for i in 0..<Int(buffer.frameLength) { ch[i] = 0 }
+    private func installAudioObservers() {
+        guard audioObservers.isEmpty else { return }
+        let center = NotificationCenter.default
+        // AX 0x1000044ac/4500/454c: block observers, object=nil, main queue.
+        audioObservers.append(center.addObserver(forName: AVAudioSession.interruptionNotification,
+                                                object: nil, queue: .main) { [weak self] _ in
+            // AX does not filter interruption type or shouldResume options.
+            self?.recoverBackgroundAudio()
+        })
+        audioObservers.append(center.addObserver(forName: AVAudioSession.mediaServicesWereResetNotification,
+                                                object: nil, queue: .main) { [weak self] _ in
+            self?.audioPlayer?.stop()
+            self?.audioPlayer = nil
+            self?.recoverBackgroundAudio()
+        })
+        audioObservers.append(center.addObserver(forName: AVAudioSession.routeChangeNotification,
+                                                object: nil, queue: .main) { [weak self] notification in
+            let reason = (notification.userInfo?[AVAudioSessionRouteChangeReasonKey] as? NSNumber)?.intValue ?? 0
+            // AX 0x10000a578/594/5d4 accepts precisely reasons 1, 2, 4.
+            if reason == 1 || reason == 2 || reason == 4 { self?.recoverBackgroundAudio() }
+        })
+        for name in [UIApplication.didEnterBackgroundNotification, UIApplication.didBecomeActiveNotification] {
+            audioObservers.append(center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                self?.recoverBackgroundAudio()
+            })
         }
-        engine.attach(player)
-        engine.connect(player, to: engine.mainMixerNode, format: format)
+        audioObservers.append(center.addObserver(forName: UIApplication.willEnterForegroundNotification,
+                                                object: nil, queue: .main) { [weak self] _ in
+            self?.endAudioBackgroundTask()
+        })
+    }
+
+    private func recoverBackgroundAudio() {
+        guard audioKeepAliveEnabled, !wzTerminating else { return }
+        beginAudioBackgroundTask()
+        audioRecoveryEpoch &+= 1
+        let epoch = audioRecoveryEpoch
+        // AX 0x100c81228, callback 0x10000a668: stale generations exit;
+        // the first successful playback invalidates all remaining attempts.
+        for delay in [0.0, 0.2, 0.5, 1.0, 2.0, 4.0, 8.0, 16.0] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                guard let self, self.audioKeepAliveEnabled, !self.wzTerminating,
+                      self.audioRecoveryEpoch == epoch else { return }
+                if self.playBackgroundAudio() {
+                    self.audioRecoveryEpoch &+= 1
+                    self.endAudioBackgroundTask()
+                }
+            }
+        }
+    }
+
+    private func playBackgroundAudio() -> Bool {
         do {
-            // mixWithOthers：不独占系统，避免影响游戏声音
             try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default, options: [.mixWithOthers])
-            try engine.start()
             try AVAudioSession.sharedInstance().setActive(true)
+            if let player = audioPlayer {
+                return player.isPlaying || player.play()
+            }
+            let cache = try FileManager.default.url(for: .cachesDirectory, in: .userDomainMask,
+                                                   appropriateFor: nil, create: true)
+            let url = cache.appendingPathComponent("ax-hud-keepalive.wav")
+            // AX 0x100009a18/0x100009c4c: mono 16-bit, 44100 Hz,
+            // one second alternating -8/+8 PCM samples.
+            var wav = Data()
+            func append<T: FixedWidthInteger>(_ value: T) {
+                var little = value.littleEndian
+                Swift.withUnsafeBytes(of: &little) { wav.append(contentsOf: $0) }
+            }
+            wav.append(contentsOf: "RIFF".utf8)
+            append(UInt32(88236))
+            wav.append(contentsOf: "WAVEfmt ".utf8)
+            append(UInt32(16)); append(UInt16(1)); append(UInt16(1))
+            append(UInt32(44100)); append(UInt32(88200))
+            append(UInt16(2)); append(UInt16(16))
+            wav.append(contentsOf: "data".utf8)
+            append(UInt32(88200))
+            for index in 0..<44100 {
+                append(Int16(index.isMultiple(of: 2) ? -8 : 8))
+            }
+            try wav.write(to: url, options: .atomic)
+            let player = try AVAudioPlayer(contentsOf: url)
+            player.numberOfLoops = -1
+            player.volume = 0.08
+            guard player.prepareToPlay(), player.isPlaying || player.play() else {
+                throw "后台保活 WAV 播放失败"
+            }
+            audioPlayer = player
+            return true
         } catch {
             logmsg("⚠️ 后台常驻音频启动失败：\(error.localizedDescription)")
+            return false
         }
-        player.scheduleBuffer(buffer, at: nil, options: .loops)
-        player.play()
-        audioEngine = engine
-        audioPlayer = player
-        logmsg("🔊 已开启静音音频后台常驻（写入将不会因切后台而暂停）")
     }
-    
-    private func stopBackgroundAudio() {
+    private func beginAudioBackgroundTask() {
+        if audioBackgroundTask == .invalid {
+            audioBackgroundTask = UIApplication.shared.beginBackgroundTask(withName: "AXHUDKeepAlive") { [weak self] in
+                guard let self else { return }
+                self.endAudioBackgroundTask()
+            }
+        }
+    }
+    private func endAudioBackgroundTask() {
+        guard audioBackgroundTask != .invalid else { return }
+        UIApplication.shared.endBackgroundTask(audioBackgroundTask)
+        audioBackgroundTask = .invalid
+    }
+    func stopBackgroundAudio() {
+        audioKeepAliveEnabled = false
+        audioRecoveryEpoch &+= 1
+        audioObservers.forEach { NotificationCenter.default.removeObserver($0) }
+        audioObservers.removeAll()
+        audioWatchdog?.cancel()
+        audioWatchdog = nil
         audioPlayer?.stop()
-        audioEngine?.stop()
         audioPlayer = nil
-        audioEngine = nil
+        endAudioBackgroundTask()
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+    }
+
+    // AX 0x100007a70 -> 0x1006fb8c0 uses queue-specific dispatch_sync,
+    // then requestHUDTermination releases local windows. Drain completion
+    // events here because this worker's host/frame operations also use main.
+    // Never dispatch_sync to wzWorker here (its frame reader also uses main).
+    func terminateWZSession() {
+        wzTerminating = true
+        wzLaunchPending = false
+        wzLaunchEpoch &+= 1
+        wzEpoch &+= 1
+        wzTimer?.cancel()
+        wzTimer = nil
+        var finished = false
+        rcdestroy {
+            // Also drain a canceled in-flight RC initializer's release block.
+            self.wzWorker.async {
+                DispatchQueue.main.async {
+                    finished = true
+                    CFRunLoopStop(CFRunLoopGetMain())
+                }
+            }
+        }
+        while !finished {
+            CFRunLoopRun()
+        }
+        stopBackgroundAudio()
     }
     
     func wzReadPointerChain(chainText: String) {
@@ -1677,7 +1657,7 @@ final class laramgr: ObservableObject {
     
     #if !DISABLE_REMOTECALL
     func rcinit(process: String, migbypass: Bool = false, completion: ((Bool) -> Void)? = nil) {
-        guard dsready else {
+        guard dsready, !wzTerminating else {
             completion?(false)
             return
         }
@@ -1702,6 +1682,12 @@ final class laramgr: ObservableObject {
             
             DispatchQueue.main.async {
                 guard let self = self else { return }
+                if self.wzTerminating {
+                    self.wzWorker.async { remoteProcess?.destroy() }
+                    self.rcrunning = false
+                    completion?(false)
+                    return
+                }
                 self.sbProc = remoteProcess
                 let success = remoteProcess != nil
                 if success {
@@ -1763,22 +1749,34 @@ final class laramgr: ObservableObject {
     }
     
     func rcdestroy(completion: (() -> Void)? = nil) {
-        guard rcready || sbProc != nil else {
-            completion?()
-            return
-        }
-        
         logmsg("正在销毁远程调用会话...")
-        rcready = false
+        wzLaunchEpoch &+= 1
+        wzGameHUDSessionArmed = false
+        wzGameHUDEnabled = false
         rcrunning = true
         let remoteProcess = sbProc
-        sbProc = nil
-        
-        DispatchQueue.global(qos: .userInitiated).async { [weak self, remoteProcess] in
+        // AX 0x1006fc64c/660 ignores both unhost return values, then
+        // 0x1006fc760 tears down RC. Preserve diagnostics, not stale handles.
+        wzWorker.async { [weak self, remoteProcess] in
+            let removed = wzhud_unregister_springboard_hosts(remoteProcess)
             remoteProcess?.destroy()
+            if self?.wzTerminating == true {
+                wzesp_reset()
+                wz_disconnect()
+            }
             
             DispatchQueue.main.async {
                 self?.rcrunning = false
+                if self?.sbProc === remoteProcess {
+                    self?.rcready = false
+                    self?.sbProc = nil
+                }
+                if !removed {
+                    self?.rcLastError = "远端窗口注销报告失败，已按 AX 顺序销毁会话"
+                    self?.logmsg("(wz.hud) unhost reported failure; AX mode 0 teardown completed")
+                }
+                self?.wzGameHUDActive = false
+                wzhud_set_enabled(false)
                 self?.logmsg("远程调用会话已销毁")
                 completion?()
             }

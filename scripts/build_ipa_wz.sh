@@ -30,14 +30,19 @@ need_files=(
     "lara/kexploit/wz/KoiTypes.h"
     "lara/kexploit/wz/KoiProjection.h"
     "lara/kexploit/wz/KoiProjection.mm"
-    "lara/kexploit/wz/YuanbaoIdentityPolicy.h"
     "lara/kexploit/wz/YuanbaoCollector.h"
     "lara/kexploit/wz/YuanbaoCollector.mm"
-    "lara/kexploit/wz/WZYuanbaoDrawPolicy.h"
+    "lara/kexploit/wz/WZAXActorCache.h"
+    "lara/kexploit/wz/WZAXMonsterPolicy.h"
+    "lara/kexploit/wz/WZAXTouch.h"
+    "lara/kexploit/wz/WZAXTouch.mm"
+    "lara/kexploit/WZAXFeatureRules.h"
     "lara/kexploit/WZHUDBridge.h"
     "lara/kexploit/WZHUDBridge.mm"
-    "lara/heroatlas.bin"
-    "lara/core-mountain.png"
+    "lara/Rajdhani Bold.otf"
+    "lara/AXReference.bundle/Assets.car"
+    "lara/AppIcon60x60@2x.png"
+    "lara/AppIcon76x76@2x~ipad.png"
     "lara/classes/laramgr.swift"
 )
 for file in "${need_files[@]}"; do
@@ -101,7 +106,7 @@ grep -q 'com.apple.springboard.accessibility-window-hosting' <<<"$entitlements" 
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :LARABuildSourceCommit' "$INFO_PLIST")" == "$SOURCE_COMMIT" ]] \
     || die "Info.plist 未写入源码提交标识"
 
-for object in wzmem.o wzesp.o KoiProjection.o YuanbaoCollector.o WZHUDBridge.o laramgr.o; do
+for object in wzmem.o wzesp.o KoiProjection.o YuanbaoCollector.o WZAXTouch.o WZHUDBridge.o laramgr.o; do
     find "$DERIVED" -name "$object" -print -quit | grep -q . \
         || die "$object 未参与编译"
 done
@@ -128,6 +133,7 @@ for marker in WZHUDDrawWindow \
     setContextId: \
     performSelectorOnMainThread:withObject:waitUntilDone: \
     setDisableUpdateMask: \
+    Rajdhani-Bold \
     "AX hosting class ready" \
     "hosting=ready mode=system-window" \
     "springboard dual-host ready"; do
@@ -138,10 +144,22 @@ for forbidden in --wzhud-host posix_spawn direct_remote_ WZHUDFloatWindow; do
     LC_ALL=C grep -a -q -- "$forbidden" "$BIN" \
         && die "最终二进制仍混入已删除的 HUD 路径：$forbidden"
 done
-[[ -f "$SRC_APP/heroatlas.bin" ]] \
-    || die "最终 App 未包含英雄头像图集"
-[[ -f "$SRC_APP/core-mountain.png" ]] \
-    || die "最终 App 未包含 Core 启动页山景资产"
+[[ -f "$SRC_APP/Rajdhani Bold.otf" ]] \
+    || die "最终 App 未包含 AX Rajdhani 字体"
+[[ "$(shasum -a 256 "$SRC_APP/Rajdhani Bold.otf" | awk '{print $1}')" == \
+   "03d4c893f1406cb68cf0c26c1c3112f2758e5e836d7b9cd3825b974f452ff261" ]] \
+    || die "AX Rajdhani 字体摘要不一致"
+[[ -f "$SRC_APP/AXReference.bundle/Assets.car" ]] \
+    || die "最终 App 未包含 AX 原始资源 catalog"
+[[ "$(shasum -a 256 "$SRC_APP/AXReference.bundle/Assets.car" | awk '{print $1}')" == \
+   "214c984a048adf3131f39afd95fc883a4f9edef48a08feccb51bd2beb63bf4cb" ]] \
+    || die "AX 原始资源 catalog 摘要不一致"
+[[ "$(shasum -a 256 "$SRC_APP/AppIcon60x60@2x.png" | awk '{print $1}')" == \
+   "b5b43be770b6514384393dee2d0ceca9aac9476fb32283d8d719f18525fdf2d0" ]] \
+    || die "AX iPhone 图标摘要不一致"
+[[ "$(shasum -a 256 "$SRC_APP/AppIcon76x76@2x~ipad.png" | awk '{print $1}')" == \
+   "67d418de12c8c9521a80c6bab887ae56e9e00df757f2c0d4befb5b5d23832792" ]] \
+    || die "AX iPad 图标摘要不一致"
 
 WZ_UUID="6a838f46-a5e8-3ec9-bbce-6b01ab2ffad4"
 FINGERPRINT=$(shasum -a 256 \

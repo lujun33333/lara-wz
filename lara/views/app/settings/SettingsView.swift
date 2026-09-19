@@ -33,7 +33,6 @@ struct SettingsView: View {
     @AppStorage("selectedMethod") private var selectedMethod: method = .hybrid
     @AppStorage("keepAlive") private var keepAlive: Bool = false
     @AppStorage("stashKRW") private var stashKRW: Bool = false
-    @AppStorage("keepSpringBoardRemoteCallAliveIOS16") private var keepSpringBoardRemoteCallAliveIOS16: Bool = false
     
     @State private var dlingkcache: Bool = false
     @State private var showkcacheimport: Bool = false
@@ -215,11 +214,6 @@ struct SettingsView: View {
                             }
                         }
                     if isIOS16() {
-                        Toggle("在后台保持 SpringBoard RemoteCall 存活", isOn: $keepSpringBoardRemoteCallAliveIOS16)
-                        Text("警告：如果 lara 在 RemoteCall 激活时退出，SpringBoard 可能会注销重启。")
-                            .font(.footnote.weight(.semibold))
-                            .foregroundColor(.red)
-
                         Button {
                             guard !stashingKRWNow else { return }
                             stashingKRWNow = true

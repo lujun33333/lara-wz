@@ -18,8 +18,13 @@ final class LaraAppDelegate: UIResponder, UIApplicationDelegate {
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
+        laramgr.shared.startBackgroundAudio()
         bootstrapLaraApplication()
         return true
+    }
+
+    func applicationWillTerminate(_ application: UIApplication) {
+        laramgr.shared.terminateWZSession()
     }
 
     func application(
@@ -73,13 +78,11 @@ final class LaraSceneDelegate: UIResponder, UIWindowSceneDelegate {
 
     func sceneWillResignActive(_ scene: UIScene) {
         wzhud_scene_active_changed(false)
-        handleLaraBackgroundTransition()
         globallogger.stopcapture()
     }
 
     func sceneDidEnterBackground(_ scene: UIScene) {
         wzhud_scene_active_changed(false)
-        handleLaraBackgroundTransition()
         globallogger.stopcapture()
     }
 }
@@ -128,18 +131,6 @@ struct LaraRootView: View {
     }
 }
 
-private var laraBackgroundCleanupInFlight = false
-
-private final class LaraBackgroundTaskBox {
-    var identifier: UIBackgroundTaskIdentifier = .invalid
-
-    func end() {
-        guard identifier != .invalid else { return }
-        UIApplication.shared.endBackgroundTask(identifier)
-        identifier = .invalid
-    }
-}
-
 private func bootstrapLaraApplication() {
     #if DEBUG
     weonadebugbuild_pjbweouttahereexclamationmark = true
@@ -160,34 +151,6 @@ private func bootstrapLaraApplication() {
         toggleka()
     }
     globallogger.capture()
-}
-
-private func handleLaraBackgroundTransition() {
-    let mgr = laramgr.shared
-    guard mgr.rcready, !laraBackgroundCleanupInFlight else { return }
-    // AX keeps its SpringBoard RemoteCall alive for the lifetime of the two
-    // remote UIWindow/CALayerHost mirrors. Destroying it while the app resigns
-    // active races the host installation and was one source of small restarts.
-    if mgr.wzGameHUDKeepsRemoteCallAlive || wzhud_springboard_hosting_ready() { return }
-    let keepSpringBoardRemoteCallAlive = UserDefaults.standard.bool(
-        forKey: "keepSpringBoardRemoteCallAliveIOS16"
-    )
-    if isIOS16() && keepSpringBoardRemoteCallAlive { return }
-
-    laraBackgroundCleanupInFlight = true
-    let task = LaraBackgroundTaskBox()
-    task.identifier = UIApplication.shared.beginBackgroundTask(withName: "RemoteCallCleanup") {
-        DispatchQueue.main.async {
-            task.end()
-            laraBackgroundCleanupInFlight = false
-        }
-    }
-    mgr.rcdestroy {
-        DispatchQueue.main.async {
-            task.end()
-            laraBackgroundCleanupInFlight = false
-        }
-    }
 }
 
 // file picker fixes
