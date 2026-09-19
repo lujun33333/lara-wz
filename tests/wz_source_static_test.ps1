@@ -296,6 +296,8 @@ Require-Text 'scripts/build_ipa_wz.sh' 'PlistBuddy.*LARABuildSourceCommit' '构�
 Reject-Text 'scripts/build_ipa_wz.sh' 'for marker in _setAllWindowsKeepContextInBackground:' '打包脚本仍强制要求已从 QXA105 菜单链删除的全局窗口策略'
 Require-Text 'scripts/build_ipa_wz.sh' 'firstCommitContent=' '打包脚本未验证首次菜单内容提交标记'
 Require-Text 'scripts/build_ipa_wz.sh' 'sceneState=active' '打包脚本未验证 Core QXA120 Scene 直连标记'
+Require-Text 'scripts/build_ipa_wz.sh' 'SBMainWorkspace[\s\S]*mainWindowScene[\s\S]*setWindowScene:[\s\S]*direct-springboard-float=ready' '打包脚本未验证 SpringBoard 直建浮球标记'
+Reject-Text 'scripts/build_ipa_wz.sh' 'SBSAccessibilityWindowHostingController|registerWindowWithContextID:atLevel:|unregisterWindowWithContextID:' '打包脚本仍强制要求设备上不可用的旧 context hosting API'
 
 $appSource = Get-Content -LiteralPath (Join-Path $root 'lara/lara.swift') -Raw
 if ($appSource -match 'TabView\s*\(') {

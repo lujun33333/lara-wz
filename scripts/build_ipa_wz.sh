@@ -113,15 +113,15 @@ LC_ALL=C grep -a -q '_setAllWindowsKeepContextInBackground:' "$BIN" \
     && die "最终二进制仍混入不属于 QXA105 菜单链的全局窗口策略"
 for marker in setDisableUpdateMask: \
     _contextId \
-    SBSAccessibilityWindowHostingController \
-    registerWindowWithContextID:atLevel: \
-    unregisterWindowWithContextID: \
-    UIApplicationProtectedDataWillBecomeUnavailable \
-    UIApplicationProtectedDataDidBecomeAvailable \
     firstCommitContent= \
-    sceneState=active; do
+    sceneState=active \
+    SBMainWorkspace \
+    mainWindowScene \
+    setWindowScene: \
+    performSelectorOnMainThread:withObject:waitUntilDone: \
+    direct-springboard-float=ready; do
     LC_ALL=C grep -a -q "$marker" "$BIN" \
-        || die "最终二进制缺少 Core 窗口保活标记：$marker"
+        || die "最终二进制缺少王者 HUD 标记：$marker"
 done
 [[ -f "$SRC_APP/heroatlas.bin" ]] \
     || die "最终 App 未包含英雄头像图集"
