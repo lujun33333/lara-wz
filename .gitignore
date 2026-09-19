@@ -11,6 +11,7 @@ build_ipa.log
 *.obj
 *.pdb
 .codex-tests/
+.codex-temp/
 
 # Python 辅助脚本的缓存
 __pycache__/
