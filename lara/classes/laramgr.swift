@@ -483,7 +483,7 @@ final class laramgr: ObservableObject {
 
         if wzhud_local_hosting_ready() {
             wzGameHUDStatus = "本地双窗口运行中"
-            logmsg("(wz.hud) local hosting ready (SBS controller registered)")
+            logmsg("(wz.hud) local hosting ready (AX 双系统窗口模式)")
             completion(true)
             return
         }

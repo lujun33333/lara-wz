@@ -1,4 +1,4 @@
-﻿$ErrorActionPreference = 'Stop'
+$ErrorActionPreference = 'Stop'
 
 $root = Split-Path -Parent $PSScriptRoot
 
@@ -46,7 +46,7 @@ Require-Text 'lara/kexploit/WZHUDBridge.mm' 'g_windowContextIDs\[2\]' 'AX contex
 Require-Text 'lara/kexploit/WZHUDBridge.h' 'bool wzhud_local_hosting_ready\(void\)' '桥接头未暴露本地托管 readiness'
 Require-Text 'lara/kexploit/WZHUDBridge.h' 'unsigned int wzhud_draw_context_id\(void\)' '桥接头未暴露绘制 context id'
 Require-Text 'lara/kexploit/WZHUDBridge.h' 'unsigned int wzhud_menu_context_id\(void\)' '桥接头未暴露菜单 context id'
-Require-Text 'lara/kexploit/WZHUDBridge.mm' 'bool wzhud_local_hosting_ready\(void\)[\s\S]{0,300}g_localHostingReady\.load\(\)' '本地托管 readiness 未绑定活动状态'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'bool wzhud_local_hosting_ready\(void\)[\s\S]{0,400}g_systemWindowMode\.load\(\)[\s\S]{0,300}g_window != nil[\s\S]{0,150}g_windowContextIDs\[0\] != 0' '本地托管 readiness 未按 AX 契约绑定双窗口与 contextId'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'g_localHostingReady\.store\(drawReady && menuReady\)' '本地托管就绪未绑定两个窗口的实际注册结果'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'wz_probe_hosting_classes_once' '缺少真机托管类只读探测'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'bool wzhud_springboard_hosting_ready\(void\)' '跨进程托管 readiness 缺失'
@@ -82,7 +82,12 @@ Require-Text 'lara/classes/laramgr.swift' 'if self\.wzLaunchPending \{[\s\S]{0,1
 Require-Text 'lara/classes/laramgr.swift' 'if wzhud_local_hosting_ready\(\) \{' 'HUD 启动未以本地托管 readiness 为第一级'
 Require-Text 'lara/classes/laramgr.swift' 'wzhud_register_springboard_hosts\(remoteProcess\)' 'Swift 未走跨进程托管兜底'
 Reject-Text 'lara/classes/laramgr.swift' 'prepareWZLocalHUDAndOpen|attempt < 30|正在注册 AX 本地双窗口' '游戏启动仍保留 HUD 等待门禁'
-Require-Text 'lara/classes/laramgr.swift' 'local hosting ready \(SBS controller registered\)' 'HUD 启动未走本地 SBS 托管'
+Require-Text 'lara/classes/laramgr.swift' 'local hosting ready \(AX 双系统窗口模式\)' 'HUD 启动未走本地双窗口就绪分支'
+# 契约：就绪 = 双系统窗口已发布 + 两个 contextId 非 0，不得再要求宿主托管注册往返。
+# iOS 26 上 SBSAccessibilityWindowHostingController 已不存在（objc_copyClassList 全表 0 命中）。
+Reject-Text 'lara/kexploit/WZHUDBridge.mm' 'bool wzhud_local_hosting_ready\(void\) \{[\s\S]{0,900}g_localHostingReady' '托管就绪判定仍要求宿主托管注册，违反 AX 契约'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'g_systemWindowMode\.store\(true\)' 'system-window 模式未被标记为正式就绪态'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'hosting=ready mode=system-window[\s\S]{0,200}原因=' '宿主托管未建立时未如实记录原因'
 Require-Text 'lara/classes/laramgr.swift' 'opening com.tencent.smoba[\s\S]*wzhud_open_smoba_application\(\)[\s\S]*open callback opened=' 'bundle ID 启动缺少结果诊断'
 Reject-Text 'lara/classes/laramgr.swift' 'private func openWZGame\(epoch: UInt64\)[\s\S]{0,240}DispatchQueue\.main\.async' 'LS 启动成功块被额外投递了一次主队列'
 Reject-Text 'lara/classes/laramgr.swift' 'smoba1104466820|openWZGameURL' '仍保留非 AX URL 启动'
