@@ -60,8 +60,9 @@ Require-Text 'lara/kexploit/WZHUDBridge.mm' 'static void render_frame_main\([\s\
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'ax_enable_hosted_layer\(CALayer \*layer\)[\s\S]{0,350}setDisableUpdateMask:[\s\S]{0,200}0x12' '缺少 AX 已证实的后台图层掩码'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'wz_probe_hosting_classes_once[\s\S]{0,1400}objc_copyClassList\(&count\)' '托管类探测未按只读枚举实现'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'kWZHUDWindowLevel = 10000009\.0' 'HUD 层级未对齐 AX 的 10000009/10000010'
-Require-Text 'lara/kexploit/WZHUDBridge.mm' 'g_menuWindow = \[\[WZHUDMenuWindow alloc\] initWithFrame:initialSurface\];[\s\S]{0,100}g_window = \[\[WZHUDDrawWindow alloc\] initWithFrame:initialSurface\]' 'AX 本地窗口未按 menu/draw 顺序 scene-less 创建'
-Reject-Text 'lara/kexploit/WZHUDBridge.mm' 'initWithWindowScene:|previousKeyWindow|\[.* makeKeyWindow\]' 'HUD 仍绑定 App scene 或恢复旧 key window'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'g_menuWindow = hudScene \? \[\[WZHUDMenuWindow alloc\] initWithWindowScene:hudScene\][\s\S]{0,200}g_window = hudScene \? \[\[WZHUDDrawWindow alloc\] initWithWindowScene:hudScene\]' 'HUD 窗口未按 menu/draw 顺序挂到 UIWindowScene'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'window scene=%s drawScene=%p menuScene=%p mode=%s' '缺少窗口 scene 诊断日志'
+Reject-Text 'lara/kexploit/WZHUDBridge.mm' 'previousKeyWindow|\[.* makeKeyWindow\]' 'HUD 仍恢复旧 key window'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' '\[g_menuWindow makeKeyAndVisible\]' 'AX 菜单未 makeKeyAndVisible'
 foreach ($window in @('WZHUDDrawWindow', 'WZHUDMenuWindow')) {
     Require-Text 'lara/kexploit/WZHUDBridge.mm' ("@implementation $window" + '[\s\S]{0,100}\+ \(BOOL\)_isSystemWindow \{ return YES; \}[\s\S]{0,100}_isSecure \{ return NO; \}[\s\S]{0,100}_canBecomeKeyWindow \{ return YES; \}[\s\S]{0,100}_isApplicationKeyWindow \{ return NO; \}[\s\S]{0,100}_isWindowServerHostingManaged \{ return NO; \}') 'AX 私有窗口身份不一致'
