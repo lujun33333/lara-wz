@@ -93,7 +93,7 @@ xcrun --sdk iphoneos clang \
     -arch arm64 \
     -miphoneos-version-min=15.0 \
     -fobjc-arc -fmodules \
-    "$ROOT/lara/kexploit/WZHUDHostHelper.m" \
+    "$ROOT/scripts/WZHUDHostHelper.m" \
     -framework Foundation -framework UIKit \
     -o "$HUD_HELPER"
 chmod 0755 "$HUD_HELPER"
