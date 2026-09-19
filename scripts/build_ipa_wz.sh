@@ -121,7 +121,9 @@ for marker in WZHUDDrawWindow \
     WZHUDMenuWindow \
     SBSAccessibilityWindowHostingController \
     registerWindowWithContextID:atLevel: \
-    unregisterWindowWithContextID:atLevel:; do
+    unregisterWindowWithContextID:atLevel: \
+    setDisableUpdateMask: \
+    "hosting=ready mode=system-window"; do
     LC_ALL=C grep -a -q -- "$marker" "$BIN" \
         || die "最终二进制缺少 AX 本地双窗口标记：$marker"
 done

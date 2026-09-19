@@ -461,49 +461,24 @@ final class laramgr: ObservableObject {
         setGameHUD(true)
         wzLaunchEpoch &+= 1
         let launchEpoch = wzLaunchEpoch
-        wzStatus = "正在准备 AX 悬浮窗"
-        prepareWZLocalHUDAndOpen(url: url, epoch: launchEpoch, attempt: 0)
-    }
-
-    private func prepareWZLocalHUDAndOpen(
-        url: URL,
-        epoch: UInt64,
-        attempt: Int
-    ) {
-        guard epoch == wzLaunchEpoch else { return }
-        if wzhud_is_enabled() {
-            wzGameHUDActive = true
-            wzGameHUDStatus = "AX 本地双窗口已就绪"
-            wzStatus = "正在启动王者荣耀"
-            logmsg("(wz.hud) local AX controllers ready")
-            openWZGameURL(url, epoch: epoch)
-            return
-        }
-        guard attempt < 30 else {
-            let reason = String(cString: wzhud_last_error())
-            let message = reason.isEmpty ? "AX 本地双窗口注册超时" : reason
-            wzStatus = "AX 悬浮窗创建失败"
-            logmsg("(wz.hud) local AX controllers not ready error=\(message)")
-            hideGameHUD(message)
-            return
-        }
-        wzGameHUDStatus = "正在注册 AX 本地双窗口"
-        DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(50)) {
-            [weak self] in
-            self?.prepareWZLocalHUDAndOpen(
-                url: url,
-                epoch: epoch,
-                attempt: attempt + 1
-            )
-        }
+        wzGameHUDActive = wzhud_is_enabled()
+        let reason = String(cString: wzhud_last_error())
+        wzGameHUDStatus = wzGameHUDActive
+            ? "本地双窗口已就绪"
+            : (reason.isEmpty ? "悬浮窗未就绪，游戏继续启动" : reason)
+        wzStatus = "正在启动王者荣耀"
+        logmsg("(wz.hud) launch is independent of HUD ready=\(wzGameHUDActive ? "yes" : "no") error=\(reason.isEmpty ? "none" : reason)")
+        openWZGameURL(url, epoch: launchEpoch)
     }
 
     private func openWZGameURL(_ url: URL, epoch: UInt64) {
         guard epoch == wzLaunchEpoch else { return }
+        logmsg("(wz.launch) opening smoba URL epoch=\(epoch)")
         UIApplication.shared.open(url, options: [:]) { [weak self] opened in
             DispatchQueue.main.async {
                 guard let self else { return }
                 guard epoch == self.wzLaunchEpoch else { return }
+                self.logmsg("(wz.launch) open callback opened=\(opened ? "yes" : "no") epoch=\(epoch)")
                 if opened {
                     self.wzStatus = "游戏已启动，等待 smoba 进程"
                     self.scheduleWZAttachAfterLaunch(attempt: 0)
@@ -808,8 +783,8 @@ final class laramgr: ObservableObject {
         text.withCString { wzhud_update_text($0) }
         wzGameHUDActive = wzhud_is_enabled()
         let error = String(cString: wzhud_last_error())
-        wzGameHUDStatus = wzGameHUDActive ? "AX 双窗口运行中" :
-            (error.isEmpty ? "AX 双窗口未就绪" : error)
+        wzGameHUDStatus = wzGameHUDActive ? "双窗口运行中" :
+            (error.isEmpty ? "双窗口未就绪" : error)
     }
     private func hideGameHUD(_ status: String) {
         wzGameHUDEnabled = false
