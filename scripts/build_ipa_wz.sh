@@ -140,7 +140,7 @@ for marker in setDisableUpdateMask: \
     WZHUDHostHelper \
     hosting=ready\ target=helper \
     noRemoteCall=1 \
-    preferredFramesPerSecond; do
+    hosted-ca; do
     LC_ALL=C grep -a -q "$marker" "$BIN" \
         || die "最终二进制缺少王者 HUD 标记：$marker"
 done
