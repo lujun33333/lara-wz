@@ -111,6 +111,7 @@ final class laramgr: ObservableObject {
     @Published var showWZControlPanel: Bool = false
     
     var sbProc: RemoteCall?
+    private var wzSpringBoardInstallRunning = false
     lazy var ytProc = RemoteCall(process: "youtube", useMigFilterBypass: false)
     @Published var wzAttached: Bool = false
     @Published var wzRunning: Bool = false
@@ -160,6 +161,7 @@ final class laramgr: ObservableObject {
     @Published var wzDefaultLineRGBA: UInt32 = 0xF1B942FF
     @Published var wzDefaultHealthRGBA: UInt32 = 0x52DA84FF
     private var wzGameHUDSessionArmed: Bool = false
+    var wzGameHUDKeepsRemoteCallAlive: Bool { wzGameHUDSessionArmed }
     private var wzFPSWindowStart = Date()
     private var wzFPSFrameCount: Int = 0
     private var audioEngine: AVAudioEngine?
@@ -459,6 +461,7 @@ final class laramgr: ObservableObject {
         // mounted here caused the duplicated panels in device captures.
         showWZControlPanel = false
         setGameHUD(true)
+        prepareWZSpringBoardHosting()
         wzLaunchEpoch &+= 1
         let launchEpoch = wzLaunchEpoch
         wzGameHUDActive = wzhud_is_enabled()
@@ -469,6 +472,61 @@ final class laramgr: ObservableObject {
         wzStatus = "正在启动王者荣耀"
         logmsg("(wz.hud) launch is independent of HUD ready=\(wzGameHUDActive ? "yes" : "no") error=\(reason.isEmpty ? "none" : reason)")
         openWZGameURL(url, epoch: launchEpoch)
+    }
+
+    // AX's working iOS 26 path creates two SpringBoard UIWindow/CALayerHost
+    // mirrors after the two local contexts exist. RemoteCall setup runs beside
+    // game launch; it is never a condition for opening the smoba URL.
+    private func prepareWZSpringBoardHosting() {
+        guard dsready, wzGameHUDSessionArmed else { return }
+        if wzhud_springboard_hosting_ready() {
+            wzGameHUDStatus = "跨 App 双窗口运行中"
+            return
+        }
+        if rcready, let remoteProcess = sbProc {
+            installWZSpringBoardHosting(remoteProcess)
+            return
+        }
+        guard !wzSpringBoardInstallRunning else { return }
+        if rcrunning {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                guard let self, self.wzGameHUDSessionArmed else { return }
+                self.prepareWZSpringBoardHosting()
+            }
+            return
+        }
+        wzSpringBoardInstallRunning = true
+        logmsg("(wz.hud) initializing SpringBoard RemoteCall without blocking game launch")
+        rcinit(process: "SpringBoard", migbypass: false) { [weak self] success in
+            guard let self else { return }
+            self.wzSpringBoardInstallRunning = false
+            guard success, self.wzGameHUDSessionArmed,
+                  let remoteProcess = self.sbProc else {
+                let detail = self.rcLastError ?? "RemoteCall 初始化失败"
+                self.wzGameHUDStatus = "跨 App 托管失败：\(detail)"
+                self.logmsg("(wz.hud) SpringBoard RemoteCall unavailable: \(detail)")
+                return
+            }
+            self.installWZSpringBoardHosting(remoteProcess)
+        }
+    }
+
+    private func installWZSpringBoardHosting(_ remoteProcess: RemoteCall) {
+        guard wzGameHUDSessionArmed, !wzSpringBoardInstallRunning else { return }
+        wzSpringBoardInstallRunning = true
+        wzWorker.async { [weak self, remoteProcess] in
+            let ready = wzhud_register_springboard_hosts(remoteProcess)
+            let detail = String(cString: wzhud_last_error())
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.wzSpringBoardInstallRunning = false
+                guard self.wzGameHUDSessionArmed else { return }
+                self.wzGameHUDStatus = ready
+                    ? "跨 App 双窗口运行中"
+                    : (detail.isEmpty ? "跨 App 双窗口托管失败" : detail)
+                self.logmsg("(wz.hud) SpringBoard CALayerHost ready=\(ready ? "yes" : "no") error=\(detail.isEmpty ? "none" : detail)")
+            }
+        }
     }
 
     private func openWZGameURL(_ url: URL, epoch: UInt64) {
@@ -791,8 +849,15 @@ final class laramgr: ObservableObject {
         wzGameHUDSessionArmed = false
         wzGameHUDActive = false
         wzGameHUDStatus = status
+        if let remoteProcess = sbProc,
+           wzhud_springboard_hosting_ready() || wzSpringBoardInstallRunning {
+            wzWorker.async { [remoteProcess] in
+                let removed = wzhud_unregister_springboard_hosts(remoteProcess)
+                globallogger.log("(wz.hud) SpringBoard CALayerHost removed=\(removed ? "yes" : "no")")
+            }
+        }
         wzhud_set_enabled(false)
-        logmsg("(wz.hud) local AX controllers stopped")
+        logmsg("(wz.hud) local windows stopped")
     }
     private func startWZLoop() {
         guard wzTimer == nil else { return }

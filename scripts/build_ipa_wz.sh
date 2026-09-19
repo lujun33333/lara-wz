@@ -87,7 +87,7 @@ BIN="$SRC_APP/$APP"
 INFO_PLIST="$SRC_APP/Info.plist"
 [[ -f "$INFO_PLIST" ]] || die "构建后未找到 Info.plist"
 
-say "使用 AX 本地双窗口权限签名 App..."
+say "使用 AX 本地双窗口与 SpringBoard CALayerHost 权限签名 App..."
 ldid -S"$ROOT/Config/lara.entitlements" "$BIN"
 entitlements=$(ldid -e "$BIN")
 grep -q 'com.apple.QuartzCore.displayable-context' <<<"$entitlements" \
@@ -119,13 +119,18 @@ LC_ALL=C grep -a -q '_setAllWindowsKeepContextInBackground:' "$BIN" \
     && die "最终二进制仍混入不属于 QXA105 菜单链的全局窗口策略"
 for marker in WZHUDDrawWindow \
     WZHUDMenuWindow \
+    SBMainWorkspace \
+    CALayerHost \
     BackBoardServices.framework/BackBoardServices \
     SBSAccessibilityWindowHostingController \
     registerWindowWithContextID:atLevel: \
     unregisterWindowWithContextID:atLevel: \
+    setContextId: \
+    performSelectorOnMainThread:withObject:waitUntilDone: \
     setDisableUpdateMask: \
     "AX hosting class ready" \
-    "hosting=ready mode=system-window"; do
+    "hosting=ready mode=system-window" \
+    "springboard dual-host ready"; do
     LC_ALL=C grep -a -q -- "$marker" "$BIN" \
         || die "最终二进制缺少 AX 本地双窗口标记：$marker"
 done

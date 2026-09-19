@@ -165,9 +165,10 @@ private func bootstrapLaraApplication() {
 private func handleLaraBackgroundTransition() {
     let mgr = laramgr.shared
     guard mgr.rcready, !laraBackgroundCleanupInFlight else { return }
-    // The AX HUD is owned by Lara's two local controllers. Backgrounding may
-    // release an unrelated RemoteCall session, but must not disable or destroy
-    // either HUD window.
+    // AX keeps its SpringBoard RemoteCall alive for the lifetime of the two
+    // remote UIWindow/CALayerHost mirrors. Destroying it while the app resigns
+    // active races the host installation and was one source of small restarts.
+    if mgr.wzGameHUDKeepsRemoteCallAlive || wzhud_springboard_hosting_ready() { return }
     let keepSpringBoardRemoteCallAlive = UserDefaults.standard.bool(
         forKey: "keepSpringBoardRemoteCallAliveIOS16"
     )
