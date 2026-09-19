@@ -131,6 +131,9 @@ for marker in WZHUDDrawWindow \
     IOHIDEventSystemClientDispatchEvent \
     "local-hosting draw/menu" \
     "hosting-probe" \
+    create_local_hosting_controller \
+    SBSAccessibilityWindowHostingController \
+    registerWindowWithContextID:atLevel: \
     "SpringBoard CALayerHost ready" \
     "springboard dual-host ready" \
     "(xpf) 字典入口" \
@@ -139,15 +142,10 @@ for marker in WZHUDDrawWindow \
     "(partial) 目标成员" \
     Rajdhani-Bold; do
     LC_ALL=C grep -a -q -- "$marker" "$BIN" \
-        || die "最终二进制缺少 AX 本地双窗口标记：$marker"
+        || die "最终二进制缺少 AX 双窗口与托管标记：$marker"
 done
-# 已归档/删除的 SpringBoard 跨进程路径不得回到二进制里。
-for forbidden in --wzhud-host posix_spawn direct_remote_ WZHUDFloatWindow \
-    SBMainWorkspace \
-    registerWindowWithContextID:atLevel: \
-    unregisterWindowWithContextID:atLevel: \
-    "AX hosting class ready" \
-    "springboard dual-host ready"; do
+# 真正退役的只有 helper / spawn / Core 三窗口这些；托管路径已按 AX 恢复，不得再列。
+for forbidden in --wzhud-host posix_spawn direct_remote_ WZHUDFloatWindow; do
     LC_ALL=C grep -a -q -- "$forbidden" "$BIN" \
         && die "最终二进制仍混入已删除的 HUD 路径：$forbidden"
 done
