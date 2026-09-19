@@ -132,7 +132,8 @@ for marker in WZHUDDrawWindow \
     "local-hosting ready (system-window)" \
     "hosting-probe" \
     "(xpf) 字典入口" \
-    "(offs) XPF 未能给出 T1SZ_BOOT" \
+    "(offs) XPF 未给出 T1SZ_BOOT" \
+    "(xpf) 缺少 item" \
     "(partial) 目标成员" \
     Rajdhani-Bold; do
     LC_ALL=C grep -a -q -- "$marker" "$BIN" \
