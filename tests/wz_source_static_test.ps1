@@ -172,6 +172,7 @@ Require-Text 'lara/kexploit/WZHUDBridge.mm' 'direct_remote_invoke_on_main_result
 Reject-Text 'lara/classes/laramgr.swift' 'rcinit\(process: "SpringBoard"|wzhud_create_direct_springboard_float|wzhud_poll_direct_springboard_commands|wzhud_remove_direct_springboard_float' '王者启动链仍进入 SpringBoard RemoteCall/直建菜单路径'
 Require-Text 'lara/classes/laramgr.swift' 'wzhud_prepare_game_launch\(\)[\s\S]*wzhud_start_context_host_helper\(\)[\s\S]*openWZGameURL\(url, epoch: epoch\)' '王者启动未使用独立 context helper 或 helper 失败仍会阻断游戏'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'WZHUDHostHelper[\s\S]*wzhud_start_context_host_helper[\s\S]*--context[\s\S]*hosting=ready target=helper[\s\S]*noRemoteCall=1' '缺少独立 HUD context helper 启动与确认链'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'mainBundle\.bundlePath[\s\S]{0,180}stringByAppendingPathComponent:@"WZHUDHostHelper"' 'HUD helper 仍使用安装后不可靠的资源查找路径'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'wzhud_stop_context_host_helper[\s\S]*--stop[\s\S]*hosting=stopped target=helper' '缺少独立 HUD context helper 停止链'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'backgroundHosted[\s\S]{0,300}\[CATransaction flush\][\s\S]{0,200}else[\s\S]{0,120}present_metal_frame_main' '后台已托管路径仍会执行全屏 Metal/fallback 快照'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'preferredFramesPerSecond = 30' 'HUD 仍以 60 FPS 刷新'
