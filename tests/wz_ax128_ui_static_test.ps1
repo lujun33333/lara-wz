@@ -1,7 +1,7 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
-$source = Get-Content -LiteralPath (Join-Path $root 'lara/kexploit/WZHUDBridge.mm') -Raw
-$project = Get-Content -LiteralPath (Join-Path $root 'lara.xcodeproj/project.pbxproj') -Raw
+$source = Get-Content -LiteralPath (Join-Path $root 'lara/kexploit/WZHUDBridge.mm') -Raw -Encoding UTF8
+$project = Get-Content -LiteralPath (Join-Path $root 'lara.xcodeproj/project.pbxproj') -Raw -Encoding UTF8
 foreach ($framework in @('MetalKit','Metal')) {
     if ($project -notmatch "name = $framework\.framework; path = System/Library/Frameworks/$framework\.framework; sourceTree = SDKROOT" -or
         $project -notmatch "PBXFrameworksBuildPhase;[\s\S]*?$framework\.framework in Frameworks") {
@@ -109,13 +109,14 @@ Require 'rowX=config\.skillX\+\(size\+3\)\*skillIndex' 'AX skill row spacing is 
 Require 'smallSize=\(size-5\)/2\.5' 'AX skill status dimensions changed'
 Require 'summonerY=heroY\+size\+2' 'AX skill icon vertical stacking changed'
 Require 'alpha:118\.0/255\.0' 'AX skill cooldown overlay opacity changed'
-Require 'wzax_touch_set_host\(remoteCall\)' 'AX sender is not attached to completed hosts'
-Require 'bool wzhud_unregister_springboard_hosts\(RemoteCall \*remoteCall\) \{\s*wzax_touch_shutdown\(\)' 'AX sender is not stopped before host cleanup'
+Require 'wzax_touch_start\(\)' 'AX touch sender is never started by the HUD'
+Reject 'wzax_touch_set_host|remoteDispatch|remoteCreateEvent|remoteCreateClient' 'touch sender still carries the removed cross-process transport'
 Require 'kCALineCapButt' 'AX default line cap changed'
 Require 'kCALineJoinRound' 'AX default line join changed'
 Require 'kCAGravityResizeAspectFill' 'AX image gravity changed'
-Require 'CGRectInset\(anchor,-4,-4\)' 'AX compact interaction padding changed'
-Require 'g_activePointerTag==0 && g_geometryTransitions==0' 'Compact geometry ignores active interactions'
+Require 'CGRectInset\(anchor,\s*-4,\s*-4\)' 'AX compact interaction padding changed'
+Require 'wantsCompact = !g_panelVisible && !g_hudContentRequiresFullScreen &&[\s\S]{0,120}!hud_pointer_active\(\) && !hud_geometry_transitions_active\(\)' 'Compact geometry ignores active interactions'
+Require 'g_hudCompactGeometryApplied = wantsCompact' 'Compact geometry state is not recorded'
 Require 'visible \? \.22 : \.18' 'AX panel animation duration changed'
 Require 'CGAffineTransformMakeScale\(\.94,\.94\)' 'AX panel animation scale changed'
 Require 'for \(double delay : \{\.15,\.65,1\.5\}\)' 'AX app-switch orientation retries changed'

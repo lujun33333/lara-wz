@@ -1,8 +1,8 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
-$source = Get-Content -LiteralPath (Join-Path $root 'lara/views/app/ContentView.swift') -Raw
-$info = Get-Content -LiteralPath (Join-Path $root 'lara/Info.plist') -Raw
-$project = Get-Content -LiteralPath (Join-Path $root 'lara.xcodeproj/project.pbxproj') -Raw
+$source = Get-Content -LiteralPath (Join-Path $root 'lara/views/app/ContentView.swift') -Raw -Encoding UTF8
+$info = Get-Content -LiteralPath (Join-Path $root 'lara/Info.plist') -Raw -Encoding UTF8
+$project = Get-Content -LiteralPath (Join-Path $root 'lara.xcodeproj/project.pbxproj') -Raw -Encoding UTF8
 
 # AX 1.2.8 original executable SHA256:
 # cc947605b97b90d898e784bf73dcab120c44c9281299fe840285dd67dfec1fb4

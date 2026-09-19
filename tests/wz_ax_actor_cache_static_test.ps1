@@ -1,7 +1,7 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
-$source = Get-Content -Raw (Join-Path $root 'lara/kexploit/wz/YuanbaoCollector.mm')
-$cache = Get-Content -Raw (Join-Path $root 'lara/kexploit/wz/WZAXActorCache.h')
+$source = Get-Content -Raw -Encoding UTF8 (Join-Path $root 'lara/kexploit/wz/YuanbaoCollector.mm')
+$cache = Get-Content -Raw -Encoding UTF8 (Join-Path $root 'lara/kexploit/wz/WZAXActorCache.h')
 foreach ($pattern in @('0x1325A828', 'UINT64_C\(350000000\)', 'UINT64_C\(500000000\)', 'count >= 2 && count <= 20', 'count >= 1 && count <= 128', 'cached->assigned', 'std::array<uint8_t, 16> bytes')) {
     if ($source -notmatch $pattern) { throw "Missing AX actor production contract: $pattern" }
 }

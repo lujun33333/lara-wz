@@ -1,6 +1,6 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
-$source = Get-Content -LiteralPath (Join-Path $root 'lara/kexploit/wz/WZAXTouch.mm') -Raw
+$source = Get-Content -LiteralPath (Join-Path $root 'lara/kexploit/wz/WZAXTouch.mm') -Raw -Encoding UTF8
 function Require([string]$pattern, [string]$message) {
     if ($source -notmatch $pattern) { throw "FAIL: $message" }
 }
@@ -9,10 +9,12 @@ Require 'Ref \(\*createVirtual\)\(Ref, CFDictionaryRef, const VirtualCallbacksV2
 Require 'serviceProperties\(\), &callbacks, token, token\)' 'VirtualService properties/generation arguments missing'
 Require 'token != generation \|\| service != virtualService' 'Late service notification may activate a replacement host'
 Require 'CFNumberGetValue\(\(CFNumberRef\)value, kCFNumberSInt64Type, &result\)' 'Registry ID must be converted from CFNumber'
-# 0x1006fa168 dispatches in the remote host after transferring serialized bytes.
-Require 'remote_write:remoteBuffer from:source size:' 'Serialized HID bytes are not copied to the remote host'
-Require 'call\("CFDataCreate"[\s\S]*call\("IOHIDEventCreateWithData"[\s\S]*call\("IOHIDEventSystemClientCreate"[\s\S]*call\("IOHIDEventSystemClientDispatchEvent"' 'Remote reconstruction/dispatch order changed'
-Require 'doRemoteCallStableWithTimeout:5' 'AX remote call timeout argument changed'
+# 0x1006fa168 dispatches locally: AX Pro v1.2.8 builds the HID event in-process
+# and hands it to its own IOHIDEventSystemClientDispatchEvent. There is no
+# serialized transfer, no remote reconstruction, and no RemoteCall host.
+Require 'AX_HID\(dispatchEvent, "IOHIDEventSystemClientDispatchEvent"\)' 'Local IOHID dispatch symbol is not resolved'
+Require 'bool dispatchLocal\(Ref event\)[\s\S]{0,220}api\.dispatchEvent\(localClient, event\)' 'Local dispatch does not use our own system client'
+Require 'const bool result = dispatchLocal\(parent\)' 'Parent event is not dispatched locally'
 Require 'attribute\(parent, 0xb0007, values.parentMask\)' 'Parent phase mask is absent'
 Require 'attribute\(parent, 0xb0016, 1\)' 'Parent integrated-display attribute is absent'
 Require 'api\.append\(parent, finger, 1\)' 'AX parent append options changed'

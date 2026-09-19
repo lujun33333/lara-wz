@@ -1,19 +1,19 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 
 $root = Split-Path -Parent $PSScriptRoot
 
 function Require-Text([string]$Path, [string]$Pattern, [string]$Message) {
-    $content = Get-Content -LiteralPath (Join-Path $root $Path) -Raw
+    $content = Get-Content -LiteralPath (Join-Path $root $Path) -Raw -Encoding UTF8
     if ($content -notmatch $Pattern) { throw "FAIL: $Message ($Path)" }
 }
 
 function Reject-Text([string]$Path, [string]$Pattern, [string]$Message) {
-    $content = Get-Content -LiteralPath (Join-Path $root $Path) -Raw
+    $content = Get-Content -LiteralPath (Join-Path $root $Path) -Raw -Encoding UTF8
     if ($content -match $Pattern) { throw "FAIL: $Message ($Path)" }
 }
 
 function Require-Count([string]$Path, [string]$Pattern, [int]$Count, [string]$Message) {
-    $content = Get-Content -LiteralPath (Join-Path $root $Path) -Raw
+    $content = Get-Content -LiteralPath (Join-Path $root $Path) -Raw -Encoding UTF8
     $actual = [regex]::Matches($content, $Pattern).Count
     if ($actual -ne $Count) {
         throw "FAIL: $Message expected=$Count actual=$actual ($Path)"
@@ -40,21 +40,17 @@ Require-Text 'lara/kexploit/wzesp.h' 'WZESP_SHOW_SKILL' '缺少技能读取开�
 # mirrors. Local SBS registrations are independent best-effort operations.
 Require-Text 'lara/kexploit/WZHUDBridge.mm' '@interface WZHUDDrawWindow : UIWindow' '缺少 AX 绘制窗口'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' '@interface WZHUDMenuWindow : UIWindow' '缺少 AX 菜单窗口'
-Require-Text 'lara/kexploit/WZHUDBridge.mm' 'g_drawHostingController' '缺少绘制窗口本地 controller'
-Require-Text 'lara/kexploit/WZHUDBridge.mm' 'g_menuHostingController' '缺少菜单窗口本地 controller'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'g_windowContextIDs\[2\]' 'AX context 数量不是两个'
-Require-Text 'lara/kexploit/WZHUDBridge.mm' 'SBSAccessibilityWindowHostingController' '缺少 AX 本地托管 controller'
-Require-Text 'lara/kexploit/WZHUDBridge.mm' 'registerWindowWithContextID:atLevel:' '缺少本地 context 注册'
-Require-Text 'lara/kexploit/WZHUDBridge.mm' 'unregisterWindowWithContextID:atLevel:' '缺少本地 context 注销'
-Require-Text 'lara/kexploit/WZHUDBridge.mm' 'remote_getClass\(process, "SBMainWorkspace"\)' '缺少 AX SpringBoard workspace 链'
-Require-Text 'lara/kexploit/WZHUDBridge.mm' 'remote_getClass\(process, "UIWindow"\)' '缺少 SpringBoard UIWindow'
-Require-Text 'lara/kexploit/WZHUDBridge.mm' 'remote_getClass\(process, "CALayerHost"\)' '缺少 SpringBoard CALayerHost'
-Require-Text 'lara/kexploit/WZHUDBridge.mm' '"setWindowScene:"' 'SpringBoard 窗口未绑定主场景'
-Require-Text 'lara/kexploit/WZHUDBridge.mm' '"setContextId:"' 'CALayerHost 未绑定 Lara context ID'
-Require-Text 'lara/kexploit/WZHUDBridge.mm' '"addSublayer:"' 'CALayerHost 未加入 SpringBoard 窗口'
-Require-Text 'lara/kexploit/WZHUDBridge.mm' 'performSelectorOnMainThread:withObject:waitUntilDone:' '远程 UIKit 未按 AX 切到 SpringBoard 主线程'
-Require-Text 'lara/kexploit/WZHUDBridge.h' 'wzhud_register_springboard_hosts\(RemoteCall \*remote_call\)' '桥接头未暴露 AX SpringBoard 托管入口'
-Require-Text 'lara/kexploit/WZHUDBridge.h' 'wzhud_unregister_springboard_hosts\(RemoteCall \*remote_call\)' '桥接头未暴露 SpringBoard 托管清理入口'
+# AX v1.2.8 的托管是纯进程内的：没有托管控制器，也没有跨进程镜像。
+# 桥接头只暴露本地 readiness 与两个 context id。
+Require-Text 'lara/kexploit/WZHUDBridge.h' 'bool wzhud_local_hosting_ready\(void\)' '桥接头未暴露本地托管 readiness'
+Require-Text 'lara/kexploit/WZHUDBridge.h' 'unsigned int wzhud_draw_context_id\(void\)' '桥接头未暴露绘制 context id'
+Require-Text 'lara/kexploit/WZHUDBridge.h' 'unsigned int wzhud_menu_context_id\(void\)' '桥接头未暴露菜单 context id'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'bool wzhud_local_hosting_ready\(void\)[\s\S]{0,300}g_localHostingReady\.load\(\)' '本地托管 readiness 未绑定活动状态'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'g_localHostingReady\.store\(YES\)' '本地托管就绪未被置位'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'wz_probe_hosting_classes_once' '缺少真机托管类只读探测'
+Reject-Text 'lara/kexploit/WZHUDBridge.mm' '^(-|\s)*(BOOL|bool)\s+register_local_hosting_controller|^(-|\s)*(BOOL|bool)\s+unregister_local_hosting_controller|create_local_hosting_controller' '仍保留已删除的托管控制器注册链'
+Reject-Text 'lara/kexploit/WZHUDBridge.h' 'wzhud_register_springboard_hosts|wzhud_unregister_springboard_hosts|wzhud_springboard_hosting_ready' '桥接头仍暴露 SpringBoard 托管入口'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'bool wzhud_is_enabled\(void\)[\s\S]{0,500}g_active\.load\(\)[\s\S]{0,250}g_menuWindowReady\.load\(\)[\s\S]{0,350}g_windowContextIDs\[0\][\s\S]{0,120}g_windowContextIDs\[1\]' '本地双窗口 readiness 未绑定活动状态和两个 context'
 Reject-Text 'lara/kexploit/WZHUDBridge.mm' 'posix_spawn|--wzhud-host|WZHUDFloatWindow|g_windowContextIDs\[3\]' '仍混入 helper 或 Core 三窗口结构'
 Reject-Text 'lara/kexploit/WZHUDBridge.mm' 'wzhud_(create|remove|poll)_direct_springboard|wzhud_(start|stop)_context_host_helper' '仍暴露旧远端/helper 实现'
@@ -62,7 +58,7 @@ Reject-Text 'lara/kexploit/WZHUDBridge.mm' 'static void handle_scene_activity_ma
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'void wzhud_update_wz_snapshot\([\s\S]{0,1200}!g_sceneActive\.load\(\)[\s\S]{0,300}g_backgroundSnapshotApplyPending\.compare_exchange_strong[\s\S]{0,700}dispatch_async\(dispatch_get_main_queue\(\)[\s\S]{0,700}render_frame_main\(CACurrentMediaTime\(\)\)' '后台快照发布未驱动合并后的主线程应用'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'static void render_frame_main\([\s\S]{0,1800}apply_wz_snapshot_main[\s\S]{0,1200}BOOL backgroundHosted = !g_sceneActive\.load\(\)[\s\S]{0,300}\[CATransaction flush\]' '后台帧未保持数据应用和 CA 提交'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'ax_enable_hosted_layer\(CALayer \*layer\)[\s\S]{0,350}setDisableUpdateMask:[\s\S]{0,200}0x12' '缺少 AX 已证实的后台图层掩码'
-Require-Text 'lara/kexploit/WZHUDBridge.mm' 'BackBoardServices\.framework/BackBoardServices"[\s\S]{0,160}RTLD_NOW \| RTLD_GLOBAL[\s\S]{0,300}objc_getClass\([\s\S]{0,100}"SBSAccessibilityWindowHostingController"' '未按 AX 顺序先全局加载 BackBoardServices 再查询 hosting 类'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'wz_probe_hosting_classes_once[\s\S]{0,1400}objc_copyClassList\(&count\)' '托管类探测未按只读枚举实现'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'kWZHUDWindowLevel = 10000009\.0' 'HUD 层级未对齐 AX 的 10000009/10000010'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'g_menuWindow = \[\[WZHUDMenuWindow alloc\] initWithFrame:initialSurface\];[\s\S]{0,100}g_window = \[\[WZHUDDrawWindow alloc\] initWithFrame:initialSurface\]' 'AX 本地窗口未按 menu/draw 顺序 scene-less 创建'
 Reject-Text 'lara/kexploit/WZHUDBridge.mm' 'initWithWindowScene:|previousKeyWindow|\[.* makeKeyWindow\]' 'HUD 仍绑定 App scene 或恢复旧 key window'
@@ -73,29 +69,20 @@ foreach ($window in @('WZHUDDrawWindow', 'WZHUDMenuWindow')) {
 Require-Text 'lara/kexploit/WZHUDBridge.mm' '@implementation WZHUDDrawWindow[\s\S]{0,500}_ignoresHitTest \{ return YES; \}' '绘制窗口未透传'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' '@implementation WZHUDMenuWindow[\s\S]{0,500}_ignoresHitTest \{ return NO; \}' '菜单窗口错误透传'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'for \(NSUInteger index : \{ 1u, 0u \}\)' 'context 未按菜单、绘制顺序获取'
-Require-Text 'lara/kexploit/WZHUDBridge.mm' 'BOOL menuReady = register_local_hosting_controller\([\s\S]{0,250}BOOL drawReady = register_local_hosting_controller\(' '本地 draw 注册仍受 menu 返回值阻断'
-Require-Text 'lara/kexploit/WZHUDBridge.mm' 'static BOOL unregister_local_hosting_controller\([\s\S]{0,500}@"unregisterWindowWithContextID:"[\s\S]{0,200}@"unregisterWindowWithContextID:atLevel:"' 'AX 注销 selector 优先级不一致'
-Require-Text 'lara/kexploit/WZHUDBridge.mm' 'BOOL menuReady = runtimeReady && remote_host_context\([\s\S]{0,250}BOOL drawReady = menuReady && remote_host_context\(' '远端双 mirror 顺序不一致'
-Require-Count 'lara/kexploit/WZHUDBridge.mm' '&zeroFrame, sizeof\(zeroFrame\), nullptr' 2 '远端 window/host frame 未全部采用 CGRectZero'
-Require-Text 'lara/kexploit/WZHUDBridge.mm' 'if \(success\) \{\s*\*windowOut = window;\s*\*hostLayerOut = hostLayer;\s*\}' 'AX mirror 输出未限于成功出口'
-Require-Text 'lara/kexploit/WZHUDBridge.mm' 'if \(drawReady\)\s*\(void\)remote_unhost_context\(remoteCall, &runtime,\s*drawWindow, drawLayer\);\s*if \(menuReady\)\s*\(void\)remote_unhost_context\(remoteCall, &runtime,\s*menuWindow, menuLayer\);' 'mirror 失败未按 AX 仅清理成功对象'
-Reject-Text 'lara/kexploit/WZHUDBridge.mm' 'if \(success \|\| drawWindow|Preserve any failed rollback handles' '仍保留 AX 没有的 partial-host 状态'
-Require-Text 'lara/kexploit/WZHUDBridge.mm' 'BOOL drawRemoved = runtimeReady && remote_unhost_context\([\s\S]{0,150}drawWindow, drawLayer\);[\s\S]{0,150}BOOL menuRemoved = runtimeReady && remote_unhost_context\([\s\S]{0,150}menuWindow, menuLayer\)' '正常 mode-0 清理未按 draw、menu 顺序'
+# 跨进程 mirror 已归档进 #if 0，不再作为活动契约断言。
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'if \(!active\)[\s\S]{0,500}configure_layer_renderer_main\(\)' '后台未配置 AX 托管图层'
-Require-Text 'lara/kexploit/WZHUDBridge.mm' 'hosting=ready mode=system-window' 'AX 类不可用时缺少明确的 system-window 模式'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'local-hosting ready \(system-window\)' '缺少本地 system-window 托管就绪日志'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' '#if 0' 'SpringBoard 跨进程托管未归档停用'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' '_shouldCreateContextAsSecure \{ return NO; \}' 'Core system-window fallback 仍错误创建 secure context'
 
 # AX failure callbacks report the error; only host success opens the game.
 Require-Text 'lara/classes/laramgr.swift' 'func launchWZGame\(\)[\s\S]*setGameHUD\(true\)[\s\S]*prepareWZSpringBoardHosting \{[\s\S]{0,450}guard success else[\s\S]{0,200}openWZGame\(epoch: launchEpoch\)' '游戏启动未依照 AX 成功/失败分支'
 Require-Text 'lara/classes/laramgr.swift' 'wzLaunchPending = true[\s\S]{0,180}initializeWZEnvironment\(\)' '首次启动未保留环境初始化后的续接请求'
 Require-Text 'lara/classes/laramgr.swift' 'if self\.wzLaunchPending \{[\s\S]{0,100}self\.launchWZGame\(\)' '偏移初始化成功后未自动续接游戏启动'
-Require-Text 'lara/classes/laramgr.swift' 'if ready \{ usleep\(1_200_000\) \}[\s\S]{0,100}DispatchQueue\.main\.async' 'AX host 成功后 worker 1.2s 延迟未同步'
+Require-Text 'lara/classes/laramgr.swift' 'guard wzhud_local_hosting_ready\(\) else' 'HUD 启动未以本地托管 readiness 为门禁'
+Reject-Text 'lara/classes/laramgr.swift' 'wzhud_register_springboard_hosts|wzhud_unregister_springboard_hosts|installWZSpringBoardHosting' 'Swift 仍调用 SpringBoard 托管链'
 Reject-Text 'lara/classes/laramgr.swift' 'prepareWZLocalHUDAndOpen|attempt < 30|正在注册 AX 本地双窗口' '游戏启动仍保留 HUD 等待门禁'
-Require-Text 'lara/classes/laramgr.swift' 'let removed = wzhud_unregister_springboard_hosts\(remoteProcess\)[\s\S]{0,300}let ready = wzhud_register_springboard_hosts' 'host 未按 mode0 再 mode1 重建'
-Reject-Text 'lara/classes/laramgr.swift' 'removed &&' 'mode0 返回值仍错误阻断 mode1 或失败清理'
-Require-Text 'lara/classes/laramgr.swift' 'let installFailed = !ready[\s\S]{0,100}if installFailed \{ remoteProcess\.destroy\(\) \}' 'AX mode1 失败后未在 worker 销毁 RemoteCall'
-Require-Text 'lara/classes/laramgr.swift' 'if installFailed, self\.sbProc === remoteProcess[\s\S]{0,100}self\.sbProc = nil[\s\S]{0,80}self\.rcready = false' 'mode1 失败未按对象身份清除对应会话'
-Require-Text 'lara/classes/laramgr.swift' 'wzhud_register_springboard_hosts\(remoteProcess\)' 'Swift 未调用 AX SpringBoard 托管链'
+Require-Text 'lara/classes/laramgr.swift' 'local system-window hosting ready' 'HUD 启动未走本地 system-window 托管'
 Require-Text 'lara/classes/laramgr.swift' 'opening com.tencent.smoba[\s\S]*wzhud_open_smoba_application\(\)[\s\S]*open callback opened=' 'bundle ID 启动缺少结果诊断'
 Reject-Text 'lara/classes/laramgr.swift' 'private func openWZGame\(epoch: UInt64\)[\s\S]{0,240}DispatchQueue\.main\.async' 'LS 启动成功块被额外投递了一次主队列'
 Reject-Text 'lara/classes/laramgr.swift' 'smoba1104466820|openWZGameURL' '仍保留非 AX URL 启动'
@@ -119,11 +106,10 @@ Require-Text 'lara/classes/laramgr.swift' 'audioRecoveryEpoch == epoch[\s\S]{0,2
 Require-Text 'lara/classes/laramgr.swift' 'func stopBackgroundAudio[\s\S]{0,400}removeObserver[\s\S]{0,200}audioWatchdog\?\.cancel' '音频终止未注销通知和watchdog'
 Require-Text 'lara/kexploit/TaskRop/RemoteCall.m' 'return version\.majorVersion == 16;' 'AX exact iOS16 分支未同步'
 Reject-Text 'lara/kexploit/TaskRop/RemoteCall.m' 'return version\.majorVersion >= 16;' 'iOS17/26 仍误走 iOS16 分支'
-Require-Text 'lara/classes/laramgr.swift' 'func rcdestroy[\s\S]{0,1000}let removed = wzhud_unregister_springboard_hosts\(remoteProcess\)\s+remoteProcess\?\.destroy\(\)' 'AX mode0 后仍未按顺序无条件拆RC'
+Require-Text 'lara/classes/laramgr.swift' 'func rcdestroy[\s\S]{0,1000}remoteProcess\?\.destroy\(\)' 'rcdestroy 未无条件销毁会话'
 Reject-Text 'lara/classes/laramgr.swift' 'retained local contexts|RemoteCall and contexts retained|远程调用会话已保留' '仍残留非 AX 失败保留策略'
 Reject-Text 'lara/classes/laramgr.swift' 'Date\(timeIntervalSinceNow: 2\)|deadline: \.now\(\) \+ 0\.5|termination cleanup did not finish before callback deadline' '仍残留无 AX 依据的终止期限/host 轮询'
-Require-Text 'lara/classes/laramgr.swift' 'wzHostingRequests\.append[\s\S]{0,150}prepareWZSpringBoardHosting' 'host 忙时未接入完成事件'
-Require-Text 'lara/classes/laramgr.swift' 'guard self\.wzGameHUDSessionArmed, let remoteProcess = self\.sbProc else[\s\S]{0,650}self\.sbProc = nil[\s\S]{0,140}self\.wzWorker\.async[\s\S]{0,100}abandonedProcess\.destroy\(\)[\s\S]{0,180}wzSpringBoardInstallRunning = false' 'RC 初始化与 HUD 取消竞态未在恢复请求前清理废弃会话'
+Require-Text 'lara/classes/laramgr.swift' 'prepareWZSpringBoardHosting[\s\S]{0,600}wzhud_local_hosting_ready' '准备函数未以本地托管为判据'
 Require-Text 'lara/classes/laramgr.swift' 'func terminateWZSession[\s\S]{0,1000}while !finished[\s\S]{0,60}CFRunLoopRun\(\)' '终止未等待远端队列完成'
 
 # AX pages and the retained collector draw-item interface.
@@ -165,4 +151,35 @@ if (Test-Path -LiteralPath (Join-Path $root 'lara/heroatlas.bin')) {
     throw 'FAIL: 已删除的旧英雄图集仍在产品资源中'
 }
 
+# ── AX 交互模型（对齐 AX Pro v1.2.8 的 mjh763hgxc）──────────────────────
+# 几何过渡按 token 记账而不是计数器；指针按 id 记账；两态几何各有显式入口。
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'g_hudActivePointerIDs\s*=\s*\[NSMutableIndexSet' '缺少 AX 活动指针集合'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'g_hudActiveGeometryTransitionIDs\s*=\s*\[NSMutableIndexSet' '缺少 AX 几何过渡 token 集合'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'g_hudGeometryTransitionGeneration\.fetch_add\(1\)' '缺少 AX 几何过渡 generation'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'static uint64_t hud_begin_geometry_transition\(void\)[\s\S]{0,300}addIndex:' '几何过渡未按 token 记账'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'static void hud_end_geometry_transition_for_token\(uint64_t token\)[\s\S]{0,180}removeIndex:' '几何过渡 token 未被回收'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'hud_begin_synthetic_interaction_for_pointer\(int64_t pointerID\)[\s\S]{0,200}addIndex:' '缺少 AX 按 pointerID 的合成交互入口'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'hud_end_synthetic_interaction_for_pointer\(int64_t pointerID\)[\s\S]{0,200}removeIndex:' '缺少 AX 按 pointerID 的合成交互回收'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'hud_apply_compact_geometry\(void\)' '缺少 AX 紧凑几何入口'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'hud_apply_full_screen_geometry\(void\)' '缺少 AX 全屏几何入口'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'hud_reconcile_interaction_geometry\(void\)' '缺少 AX 几何和解入口'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'hud_refresh_interaction_geometry\(void\)' '缺少 AX 几何刷新入口'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'hud_resolved_full_screen_bounds\(void\)' '缺少 AX 全屏边界求解'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'g_hudSurfaceBounds' '缺少 AX hudSurfaceBounds 状态'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'g_hudPortraitSurfaceBounds' '缺少 AX hudPortraitSurfaceBounds 状态'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'g_hudContentRequiresFullScreen' '缺少 AX hudContentRequiresFullScreen 状态'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'g_hudInteractionGeometryConfigured' '缺少 AX hudInteractionGeometryConfigured 状态'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'g_hudCompactGeometryApplied' '缺少 AX hudCompactGeometryApplied 状态'
+Require-Count 'lara/kexploit/WZHUDBridge.mm' 'hud_refresh_interaction_geometry\(\)' 3 '几何刷新调用点数量异常'
+Require-Count 'lara/kexploit/WZHUDBridge.mm' 'hud_apply_full_screen_geometry\(\)' 1 '全屏几何未被调用'
+Require-Count 'lara/kexploit/WZHUDBridge.mm' 'hud_apply_compact_geometry\(\)' 1 '紧凑几何未被调用'
+Reject-Text 'lara/kexploit/WZHUDBridge.mm' 'g_geometryTransitions' '仍保留 AX 没有的过渡计数器'
+
+# ── 底层：XPF 解析策略对齐 AX（正规字典入口优先，逐项仅作兜底）───────────
+Require-Text 'lara/kexploit/xpfitems.m' 'static const char \*kAXSets\[\] = \{ "base", "translation", "physmap", NULL \}' '缺少 AX 的三组字典集合'
+Require-Text 'lara/kexploit/xpfitems.m' 'xpf_construct_offset_dictionary\(kAXSets\)' '未走 XPF 正规字典入口'
+Require-Text 'lara/kexploit/xpfitems.m' 'xpc_dictionary_get_uint64\(dict, "kernelConstant.T1SZ_BOOT"\)' '未从字典取 T1SZ_BOOT'
+Require-Text 'lara/kexploit/xpfitems.m' '字典入口失败[\s\S]{0,220}回落到逐项解析' '字典失败后缺少明确的回落路径'
+Require-Text 'lara/kexploit/xpfitems.m' 'xpfresetitems\(\);[\s\S]{0,400}xpf_item_resolve' '兜底逐项解析前未清缓存'
+Reject-Text 'lara/kexploit/xpfitems.m' '保留静态表值' '仍保留静态兜底语义'
 Write-Output 'PASS: WZ AX two-window static contracts present; build and device behavior remain unverified'

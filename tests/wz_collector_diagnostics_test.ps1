@@ -1,9 +1,9 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 
 $root = Split-Path -Parent $PSScriptRoot
 
 function Read-Source([string]$Path) {
-    return Get-Content -LiteralPath (Join-Path $root $Path) -Raw
+    return Get-Content -LiteralPath (Join-Path $root $Path) -Raw -Encoding UTF8
 }
 
 function Require-Text([string]$Path, [string]$Pattern, [string]$Message) {

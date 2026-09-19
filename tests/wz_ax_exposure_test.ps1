@@ -1,8 +1,8 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
-$header = Get-Content -Raw (Join-Path $root 'lara/kexploit/wzesp.h')
-$consumer = Get-Content -Raw (Join-Path $root 'lara/kexploit/wzesp.mm')
-$collector = Get-Content -Raw (Join-Path $root 'lara/kexploit/wz/YuanbaoCollector.mm')
+$header = Get-Content -Raw -Encoding UTF8 (Join-Path $root 'lara/kexploit/wzesp.h')
+$consumer = Get-Content -Raw -Encoding UTF8 (Join-Path $root 'lara/kexploit/wzesp.mm')
+$collector = Get-Content -Raw -Encoding UTF8 (Join-Path $root 'lara/kexploit/wz/YuanbaoCollector.mm')
 function Require([string]$text, [string]$pattern, [string]$reason) {
     if ($text -notmatch $pattern) { throw $reason }
 }

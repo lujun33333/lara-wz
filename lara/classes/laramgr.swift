@@ -467,90 +467,33 @@ final class laramgr: ObservableObject {
         DispatchQueue.main.async { requests.forEach { $0() } }
     }
 
+    // 对齐 AX v1.2.8：HUD 托管**不经过 SpringBoard RemoteCall**。
+    //
+    // 从 AX自签v1.2.8.ipa 核实：链接库里没有 SpringBoardServices；全量
+    // ObjC 元数据（24 类）里没有任何 RemoteCall 类，也没有一条 (rc) 路由日志；
+    // `SBSAccessibilityWindowHostingController` / `registerWindowWithContextID:`
+    // 全部零命中。它的 HUD 完全在进程内完成 —— 自己造 system window、自持
+    // contextId、盖 `_isWindowServerHostingManaged`。
+    //
+    // 原实现把 SpringBoard RemoteCall 当作托管的必经步骤，而这条路的失败
+    // 会一路拖到底层（ipc 查找 -> compact 指针解码 -> t1sz_boot 判定 -> 洞拦截
+    // -> trojanMem=0 -> 无限重试）。AX 不走它，这里也不再走。
+    //
+    // 现在的判据：本进程双系统窗口已发布且两个 contextId 非 0，即为托管就绪。
     private func prepareWZSpringBoardHosting(completion: @escaping (Bool) -> Void) {
         guard !wzTerminating else { completion(false); return }
         guard dsready, wzGameHUDSessionArmed else { completion(false); return }
-        if rcrunning || wzSpringBoardInstallRunning {
-            wzHostingRequests.append { [weak self] in
-                guard let self else { return }
-                self.prepareWZSpringBoardHosting(completion: completion)
-            }
-            return
-        }
-        if rcready, let remoteProcess = sbProc {
-            installWZSpringBoardHosting(remoteProcess, completion: completion)
-            return
-        }
-        wzSpringBoardInstallRunning = true
-        logmsg("(wz.hud) initializing SpringBoard RemoteCall before host rebuild")
-        rcinit(process: "SpringBoard", migbypass: false) { [weak self] success in
-            guard let self else { return }
-            guard success else {
-                self.wzSpringBoardInstallRunning = false
-                let detail = self.rcLastError ?? "RemoteCall 初始化失败"
-                self.wzGameHUDStatus = "跨 App 托管失败：\(detail)"
-                self.logmsg("(wz.hud) SpringBoard RemoteCall unavailable: \(detail)")
-                completion(false)
-                return
-            }
-            guard self.wzGameHUDSessionArmed, let remoteProcess = self.sbProc else {
-                // AX serializes init/mode0/mode1 on one worker. If this Swift
-                // session was canceled while init ran elsewhere, immediately
-                // dispose the now-orphaned RC before another request starts.
-                if let abandonedProcess = self.sbProc {
-                    self.sbProc = nil
-                    self.rcready = false
-                    self.wzWorker.async { [weak self] in
-                        abandonedProcess.destroy()
-                        DispatchQueue.main.async {
-                            self?.wzSpringBoardInstallRunning = false
-                            completion(false)
-                        }
-                    }
-                } else {
-                    self.wzSpringBoardInstallRunning = false
-                    completion(false)
-                }
-                return
-            }
-            self.wzSpringBoardInstallRunning = false
-            self.installWZSpringBoardHosting(remoteProcess, completion: completion)
-        }
-    }
 
-    private func installWZSpringBoardHosting(_ remoteProcess: RemoteCall, completion: @escaping (Bool) -> Void) {
-        guard wzGameHUDSessionArmed, !wzSpringBoardInstallRunning else { completion(false); return }
-        wzSpringBoardInstallRunning = true
-        wzWorker.async { [weak self, remoteProcess] in
-            let removed = wzhud_unregister_springboard_hosts(remoteProcess)
-            if !removed {
-                self?.logmsg("(wz.hud) mode 0 unhost reported failure; continuing AX mode 1 rebuild")
-            }
-            let ready = wzhud_register_springboard_hosts(remoteProcess)
+        guard wzhud_local_hosting_ready() else {
             let detail = String(cString: wzhud_last_error())
-            // AX mode 1 failure 0x1006ff33c -> 0x1006ffba8 tears down RC
-            // after rolling back the successfully created menu host.
-            let installFailed = !ready
-            if installFailed { remoteProcess.destroy() }
-            // AX 0x10007dbc4-cc: successful host setup sleeps 0x124f80 us
-            // on its worker before dispatching the main launch callback.
-            if ready { usleep(1_200_000) }
-            DispatchQueue.main.async {
-                guard let self else { return }
-                if installFailed, self.sbProc === remoteProcess {
-                    self.sbProc = nil
-                    self.rcready = false
-                    self.rcLastError = detail.isEmpty ? "跨 App 双窗口托管失败" : detail
-                }
-                self.wzSpringBoardInstallRunning = false
-                defer { completion(ready && self.wzGameHUDSessionArmed && !self.wzTerminating) }
-                guard self.wzGameHUDSessionArmed else { return }
-                self.wzGameHUDStatus = ready
-                    ? "跨 App 双窗口运行中"
-                    : (detail.isEmpty ? "跨 App 双窗口托管失败" : detail)
-                self.logmsg("(wz.hud) SpringBoard CALayerHost ready=\(ready ? "yes" : "no") error=\(detail.isEmpty ? "none" : detail)")
-            }
+            wzGameHUDStatus = detail.isEmpty ? "本地双窗口未就绪" : detail
+            logmsg("(wz.hud) local hosting not ready: \(detail.isEmpty ? "none" : detail)")
+            completion(false)
+            return
         }
+        wzGameHUDStatus = "本地双窗口运行中"
+        logmsg("(wz.hud) local system-window hosting ready (no SpringBoard RemoteCall)")
+        completion(true)
     }
 
     private func openWZGame(epoch: UInt64) {
@@ -1756,9 +1699,9 @@ final class laramgr: ObservableObject {
         rcrunning = true
         let remoteProcess = sbProc
         // AX 0x1006fc64c/660 ignores both unhost return values, then
-        // 0x1006fc760 tears down RC. Preserve diagnostics, not stale handles.
+        // 0x1006fc760 tears down RC. 对齐后本地托管没有「注销」这一步，
+        // 窗口析构即撤销托管，所以这里不再向 SpringBoard 发任何消息。
         wzWorker.async { [weak self, remoteProcess] in
-            let removed = wzhud_unregister_springboard_hosts(remoteProcess)
             remoteProcess?.destroy()
             if self?.wzTerminating == true {
                 wzesp_reset()
@@ -1771,13 +1714,9 @@ final class laramgr: ObservableObject {
                     self?.rcready = false
                     self?.sbProc = nil
                 }
-                if !removed {
-                    self?.rcLastError = "远端窗口注销报告失败，已按 AX 顺序销毁会话"
-                    self?.logmsg("(wz.hud) unhost reported failure; AX mode 0 teardown completed")
-                }
                 self?.wzGameHUDActive = false
                 wzhud_set_enabled(false)
-                self?.logmsg("远程调用会话已销毁")
+                self?.logmsg("远程调用会话已销毁（本地托管无需注销）")
                 completion?()
             }
         }
