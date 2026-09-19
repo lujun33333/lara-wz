@@ -129,8 +129,10 @@ for marker in WZHUDDrawWindow \
     BackBoardServices.framework/BackBoardServices \
     setDisableUpdateMask: \
     IOHIDEventSystemClientDispatchEvent \
-    "local-hosting ready (system-window)" \
+    "local-hosting draw/menu" \
     "hosting-probe" \
+    "SpringBoard CALayerHost ready" \
+    "springboard dual-host ready" \
     "(xpf) 字典入口" \
     "(offs) XPF 未给出 T1SZ_BOOT" \
     "(xpf) 缺少 item" \
@@ -142,7 +144,6 @@ done
 # 已归档/删除的 SpringBoard 跨进程路径不得回到二进制里。
 for forbidden in --wzhud-host posix_spawn direct_remote_ WZHUDFloatWindow \
     SBMainWorkspace \
-    SBSAccessibilityWindowHostingController \
     registerWindowWithContextID:atLevel: \
     unregisterWindowWithContextID:atLevel: \
     "AX hosting class ready" \
