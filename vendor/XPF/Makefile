@@ -16,9 +16,12 @@ else
 CHOMA_DEP = $(CHOMA_PATH)/src/*.c
 endif
 
-IMG4LIB_CFLAGS = -DUSE_COMMONCRYPTO -DUSE_LIBCOMPRESSION -DiOS10 -DDER_MULTIBYTE_TAGS=1 -D__unused="__attribute__((unused))" -DDER_TAG_SIZE=8 -Iexternal/img4lib -Wno-variadic-macros -Wno-multichar -Wno-four-char-constants -Wno-unused-parameter
+IMG4LIB_CFLAGS = -DUSE_COMMONCRYPTO -DUSE_LIBCOMPRESSION -DiOS10 -DDER_MULTIBYTE_TAGS=1 -D__unused="__attribute__((unused))" -DDER_TAG_SIZE=8 -Iexternal/img4lib -Iexternal/img4lib/lzfse/src -Wno-variadic-macros -Wno-multichar -Wno-four-char-constants -Wno-unused-parameter
 IMG4LIB_LDFLAGS = -framework Security
-IMG4LIB_DEP = $(filter-out external/img4lib/libvfs/vfs_lzvn.c, $(wildcard external/img4lib/lzss.c external/img4lib/libvfs/*.c external/img4lib/libDER/*.c))
+# 上游假设系统里装了 lzfse；这里改为直接编译 img4lib 自带的 lzfse 源码
+# （external/img4lib/lzfse/src），否则 src/im4p_direct.c 找不到 lzfse.h。
+LZFSE_DEP = $(wildcard external/img4lib/lzfse/src/*.c)
+IMG4LIB_DEP = $(filter-out external/img4lib/libvfs/vfs_lzvn.c, $(wildcard external/img4lib/lzss.c external/img4lib/libvfs/*.c external/img4lib/libDER/*.c)) $(LZFSE_DEP)
 
 CFLAGS += $(IMG4LIB_CFLAGS)
 LDFLAGS += $(IMG4LIB_LDFLAGS)
