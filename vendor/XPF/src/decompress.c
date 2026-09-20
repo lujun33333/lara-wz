@@ -18,7 +18,7 @@
 #define KCOMP_HDR_MAGIC (0x636F6D70U)
 #define KCOMP_HDR_TYPE_LZSS (0x6C7A7373U)
 
-static const uint8_t *
+const uint8_t *
 der_decode(uint8_t tag, const uint8_t *der, const uint8_t *der_end, size_t *out_len) {
     size_t der_len;
 
@@ -40,7 +40,7 @@ der_decode(uint8_t tag, const uint8_t *der, const uint8_t *der_end, size_t *out_
     return NULL;
 }
 
-static const uint8_t *
+const uint8_t *
 der_decode_seq(const uint8_t *der, const uint8_t *der_end, const uint8_t **seq_end) {
     size_t der_len;
 
@@ -50,7 +50,7 @@ der_decode_seq(const uint8_t *der, const uint8_t *der_end, const uint8_t **seq_e
     return der;
 }
 
-static const uint8_t *
+const uint8_t *
 der_decode_uint64(const uint8_t *der, const uint8_t *der_end, uint64_t *r) {
     size_t der_len;
 
@@ -64,7 +64,7 @@ der_decode_uint64(const uint8_t *der, const uint8_t *der_end, uint64_t *r) {
     return NULL;
 }
 
-static size_t
+size_t
 decompress_lzss(const uint8_t *src, size_t src_len, uint8_t *dst, size_t dst_len) {
     const uint8_t *src_end = src + src_len, *dst_start = dst, *dst_end = dst + dst_len;
     uint16_t i, r = LZSS_N - LZSS_F, flags = 0;

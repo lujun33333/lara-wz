@@ -5,7 +5,6 @@
 //  Created by ruter on 23.03.26.
 //
 
-import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
 
@@ -48,10 +47,9 @@ final class LaraAppDelegate: UIResponder, UIApplicationDelegate {
     }
 }
 
-@objc(LaraSceneDelegate)
+@objc(ZeqcgKhNvh)
 final class LaraSceneDelegate: UIResponder, UIWindowSceneDelegate {
     var window: UIWindow?
-    private var rootViewController: UIHostingController<LaraRootView>?
 
     func scene(
         _ scene: UIScene,
@@ -59,75 +57,29 @@ final class LaraSceneDelegate: UIResponder, UIWindowSceneDelegate {
         options connectionOptions: UIScene.ConnectionOptions
     ) {
         guard let windowScene = scene as? UIWindowScene else { return }
-        let root = UIHostingController(rootView: LaraRootView())
         let window = UIWindow(windowScene: windowScene)
-        window.rootViewController = root
-        window.makeKeyAndVisible()
-        rootViewController = root
         self.window = window
-        globallogger.log(
-            "(scene) UIKit single-scene host connected role=\(session.role.rawValue)"
+        window.backgroundColor = .black
+        window.rootViewController = AXLauncherViewController(
+            manager: laramgr.shared,
+            authorizationState: .unverified
         )
+        window.makeKeyAndVisible()
     }
 
     func sceneDidBecomeActive(_ scene: UIScene) {
-        wzhud_scene_active_changed(true)
-        globallogger.capture()
-        IconThemeManager.shared.startPendingFixupIfPossible()
+    }
+
+    func sceneWillEnterForeground(_ scene: UIScene) {
     }
 
     func sceneWillResignActive(_ scene: UIScene) {
-        wzhud_scene_active_changed(false)
-        globallogger.stopcapture()
     }
 
     func sceneDidEnterBackground(_ scene: UIScene) {
-        wzhud_scene_active_changed(false)
-        globallogger.stopcapture()
     }
-}
 
-struct LaraRootView: View {
-    @StateObject private var mgr = laramgr.shared
-    @StateObject private var iconthememgr = IconThemeManager.shared
-    @AppStorage("logsdisplaymode") private var logsdisplaymode: logsdisplaymode = .toolbar
-
-    var body: some View {
-        ContentView()
-        .environmentObject(mgr)
-        .overlay {
-            if mgr.showrespring {
-                respringview()
-                    .brightness(-1.0)
-                    .ignoresSafeArea()
-            }
-        }
-        .sheet(isPresented: Binding(
-            get: { logsdisplaymode == .toolbar && mgr.showLogs },
-            set: { mgr.showLogs = $0 }
-        )) {
-            LogsView(logger: globallogger)
-        }
-        .sheet(isPresented: $iconthememgr.showFixupSheet) {
-            IconThemeFixupView()
-        }
-        .onAppear {
-            if !isunsupported() {
-                init_offsets()
-                offsets_init()
-                iconthememgr.startPendingFixupIfPossible()
-                // beautiful name root
-                // thanks
-                mgr.hasOffsets = emergencyfixfunctiontobereplacedlateronquestionmark()
-            } else {
-                Alertinator.shared.alert(title: "此设备不受支持！", body: "很抱歉，此设备目前不受 Lara 支持。可能的原因：\n- 你所在的是不受支持的 iOS 版本（支持：iOS 16.0 - iOS 18.7.1、iOS 26.0 - iOS 26.0.1）\n- 你的设备带有 MIE（A19+ 或 M5+）\n- 有调试器已附加。", actionLabel: "退出应用", action: { exitinator() })
-            }
-        }
-        .onChange(of: mgr.sbxready) { ready in
-            if ready {
-                iconthememgr.startPendingFixupIfPossible()
-            }
-        }
+    func sceneDidDisconnect(_ scene: UIScene) {
     }
 }
 
@@ -135,6 +87,10 @@ private func bootstrapLaraApplication() {
     #if DEBUG
     weonadebugbuild_pjbweouttahereexclamationmark = true
     #endif
+
+    // AX AppDelegate notification registration@0x100007470 listens for the
+    // exact Darwin request used by requestHUDTermination@0x100007aac.
+    wzhud_install_termination_notification()
 
     // fix file picker
     let fixMethod = class_getInstanceMethod(

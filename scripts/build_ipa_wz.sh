@@ -3,7 +3,9 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 ROOT="$(pwd)"
-APP=lara
+PROJECT=lara
+SCHEME=lara
+PRODUCT_NAME="AX Pro"
 CONFIG=Release
 DERIVED="$ROOT/build/DerivedDataWZ"
 
@@ -18,8 +20,155 @@ say() { printf '[*] %s\n' "$*"; }
 ok()  { printf '[+] %s\n' "$*"; }
 die() { printf '[!] %s\n' "$*" >&2; exit 1; }
 
+reset_build_dir() {
+    local target="$1"
+    case "$target" in
+        "$ROOT"/build/*) ;;
+        *) die "拒绝清理 build 目录外的路径：$target" ;;
+    esac
+    [[ "$target" != "$ROOT/build" && "$target" != "$ROOT/build/" ]] \
+        || die "拒绝清理整个 build 根目录"
+    rm -rf -- "$target"
+    mkdir -p -- "$target"
+}
+
+remove_previous_output() {
+    local target="$1"
+    case "$target" in
+        "$ROOT"/AX-Pro-1.2.8-*.ipa|\
+        "$ROOT"/AX-Pro-1.2.8-*.json|\
+        "$ROOT"/AX-Pro-1.2.8-*.jsonl|\
+        "$ROOT"/AX-Pro-1.2.8-*.sha256) ;;
+        *) die "拒绝删除非 AX 1.2.8 输出：$target" ;;
+    esac
+    rm -f -- "$target"
+}
+
 command -v xcodebuild >/dev/null 2>&1 || die "缺少 xcodebuild"
 command -v zip >/dev/null 2>&1 || die "缺少 zip"
+command -v python3 >/dev/null 2>&1 || die "缺少 python3"
+command -v git >/dev/null 2>&1 || die "缺少 git"
+
+# 在任何依赖拉取、编译或生成文件之前固定源码身份；否则构建中间产物会把
+# 干净的 CI checkout 误判为 dirty。build/ 与最终根目录产物均不进入清单。
+if git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    SOURCE_HAS_GIT=1
+    SOURCE_COMMIT=$(git -C "$ROOT" rev-parse HEAD)
+    SOURCE_TREE=$(git -C "$ROOT" rev-parse 'HEAD^{tree}')
+    SOURCE_STATUS=$(git -C "$ROOT" status --porcelain=v1 --untracked-files=all)
+else
+    SOURCE_HAS_GIT=0
+    SOURCE_COMMIT=nogit
+    SOURCE_TREE=nogit
+    SOURCE_STATUS=
+fi
+mkdir -p "$ROOT/build"
+SOURCE_MANIFEST_TMP="$ROOT/build/source-files.jsonl"
+python3 - "$ROOT" "$SOURCE_MANIFEST_TMP" <<'PY' \
+    || die "无法生成完整源码文件清单"
+import hashlib
+import json
+import os
+import pathlib
+import subprocess
+import sys
+
+root = pathlib.Path(sys.argv[1]).resolve()
+output = pathlib.Path(sys.argv[2])
+
+generated_patterns = (
+    "AX-Pro-1.2.8-*.ipa",
+    "AX-Pro-1.2.8-*.json",
+    "AX-Pro-1.2.8-*.jsonl",
+    "AX-Pro-1.2.8-*.sha256",
+    "lara-wz-*.ipa",
+    "lara-wz-*.json",
+)
+
+def is_generated(relative):
+    return len(relative.parts) == 1 and any(
+        relative.match(pattern) for pattern in generated_patterns
+    )
+
+try:
+    raw_paths = subprocess.check_output(
+        [
+            "git", "-C", str(root), "ls-files", "--cached", "--others",
+            "--exclude-standard", "-z",
+        ]
+    )
+    relative_paths = {
+        pathlib.PurePosixPath(os.fsdecode(item))
+        for item in raw_paths.split(b"\0")
+        if item
+    }
+except (FileNotFoundError, subprocess.CalledProcessError):
+    excluded_parts = {
+        ".git", "build", ".codex-tests", ".codex-temp", "__pycache__",
+        "xcuserdata", "__MACOSX",
+    }
+    relative_paths = set()
+    for path in root.rglob("*"):
+        relative = pathlib.PurePosixPath(path.relative_to(root).as_posix())
+        if any(part in excluded_parts for part in relative.parts):
+            continue
+        if path.is_file() or path.is_symlink():
+            relative_paths.add(relative)
+
+records = []
+for relative in sorted(relative_paths, key=lambda item: item.as_posix().encode("utf-8")):
+    if is_generated(relative):
+        continue
+    path = root.joinpath(*relative.parts)
+    if path.is_symlink():
+        payload = os.fsencode(os.readlink(path))
+        mode = "120000"
+        kind = "symlink"
+    elif path.is_file():
+        payload = path.read_bytes()
+        mode = "100755" if os.access(path, os.X_OK) else "100644"
+        kind = "file"
+    else:
+        # Tracked deletions are represented by their absence from the manifest.
+        continue
+    records.append(
+        {
+            "kind": kind,
+            "mode": mode,
+            "path": relative.as_posix(),
+            "sha256": hashlib.sha256(payload).hexdigest(),
+            "size": len(payload),
+        }
+    )
+
+if not records:
+    raise SystemExit("source manifest is empty")
+output.write_text(
+    "".join(
+        json.dumps(record, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        + "\n"
+        for record in records
+    ),
+    encoding="utf-8",
+)
+PY
+SOURCE_MANIFEST_SHA256=$(shasum -a 256 "$SOURCE_MANIFEST_TMP" | awk '{print $1}')
+
+if [[ "$SOURCE_HAS_GIT" == 1 ]]; then
+    if [[ -z "$SOURCE_STATUS" ]]; then
+        SOURCE_STATE=clean
+        SOURCE_FINGERPRINT=$(printf 'commit=%s\ntree=%s\n' \
+            "$SOURCE_COMMIT" "$SOURCE_TREE" | shasum -a 256 | awk '{print $1}')
+    else
+        SOURCE_STATE=dirty
+        SOURCE_FINGERPRINT="$SOURCE_MANIFEST_SHA256"
+    fi
+else
+    SOURCE_STATE=snapshot
+    SOURCE_FINGERPRINT="$SOURCE_MANIFEST_SHA256"
+fi
+SOURCE_COMMIT_SHORT="${SOURCE_COMMIT:0:12}"
+SOURCE_FINGERPRINT_SHORT="${SOURCE_FINGERPRINT:0:12}"
 
 # ── 从源码构建 libxpf.dylib ──────────────────────────────────────────────────
 # lara/lib/libxpf.dylib 曾经是一个提交进 git 的预编译二进制（2026-09-05），
@@ -29,7 +178,7 @@ command -v zip >/dev/null 2>&1 || die "缺少 zip"
 # pointer_mask 与 T1SZ_BOOT 都拿不到 —— 内核注入层的 call primitive 与
 # task port 随之全部失效。这里改为每次构建都从 vendor/XPF 源码编译，
 # 保证「修好的源码」真的进入出货二进制。
-say "从源码构建 libxpf.dylib ..."
+say "从源码构建并静态链接 XPF / libgrabkernel2 ..."
 XPF_DIR="$ROOT/vendor/XPF"
 [ -f "$XPF_DIR/src/common.c" ] || die "缺少 vendor/XPF/src"
 [ -f "$XPF_DIR/Makefile" ]     || die "缺少 vendor/XPF/Makefile"
@@ -70,25 +219,215 @@ def struct_body(path):
 
 if struct_body(sys.argv[1]) != struct_body(sys.argv[2]):
     raise SystemExit("gXPF layout mismatch")
+
+for path in sys.argv[1:]:
+    text = pathlib.Path(path).read_text(encoding="utf-8")
+    for forbidden in (
+        "kernelBootcodeSection", "kernelSandboxAuthStubSection",
+        "kernelIOSurfaceTextSection", "kernelIOSurfaceStringSection",
+        "kernelIOSurfaceOsLogSection", "decompressedSptm", "decompressedTxm",
+        "sptmContainer", "txmContainer",
+    ):
+        if forbidden in text:
+            raise SystemExit(f"forbidden AX 1.2.8 XPF field {forbidden}: {path}")
+    for required in (
+        "offsetof(XPF, firstItem) == 0x110",
+        "offsetof(XPF, ignoreBaseSet) == 0x118",
+        "sizeof(XPF) == 0x120",
+    ):
+        if required not in text:
+            raise SystemExit(f"missing ABI assertion {required}: {path}")
 PY
-if [ ! -d "$XPF_DIR/external/ChOma/src" ]; then
-    say "拉取 ChOma 子模块 ..."
-    rm -rf "$XPF_DIR/external/ChOma"
-    git clone --depth 1 https://github.com/opa334/ChOma \
-        "$XPF_DIR/external/ChOma" >/dev/null 2>&1 || die "无法拉取 ChOma"
+for removed in "$XPF_DIR/src/sptm_txm.c" "$XPF_DIR/src/sptm_txm.h" \
+               "$XPF_DIR/src/im4p_direct.c" "$XPF_DIR/src/im4p_direct.h"; do
+    [[ ! -e "$removed" ]] || die "旧 XPF 构建仍混入可选镜像源：$removed"
+done
+if LC_ALL=C grep -R -nE 'xpf_sptm_txm_init|decompressedSptm|decompressedTxm|kernelBootcodeSection|kernelSandboxAuthStubSection' \
+        "$XPF_DIR/src" "$XPF_DIR/Makefile"; then
+    die "旧 XPF 生产链仍混入 SPTM/TXM 初始化或新版 section"
 fi
+LC_ALL=C grep -q -- 'arm_maxoffset' "$XPF_DIR/src/common.c" \
+    || die "旧 XPF 源码缺少 arm_maxoffset 兼容 finder"
+
+verify_xpf_binary_layout() {
+    local artifact="$1"
+    shift
+    python3 - "$artifact" "$@" <<'PY' \
+        || die "XPF 产物 ABI 偏移验证失败：$artifact"
+import pathlib
+import re
+import subprocess
+import sys
+
+artifact = pathlib.Path(sys.argv[1])
+required_archs = sys.argv[2:]
+if not artifact.is_file():
+    raise SystemExit(f"missing artifact: {artifact}")
+if not required_archs:
+    raise SystemExit("no required architecture supplied")
+
+archs = subprocess.check_output(
+    ["xcrun", "lipo", "-archs", str(artifact)], text=True
+).split()
+for required_arch in required_archs:
+    if required_arch not in archs:
+        raise SystemExit(f"missing architecture {required_arch}: {artifact}")
+
+required_offsets = {
+    "_xpf_item_register": "0x110",
+    "_xpf_item_resolve": "0x110",
+    "_xpf_set_ignore_base_set": "0x118",
+}
+for arch in required_archs:
+    symbols = subprocess.check_output(
+        ["xcrun", "nm", "-arch", arch, "-n", str(artifact)], text=True
+    )
+    gxpf_match = re.search(
+        r"(?mi)^([0-9a-f]+)\s+\S\s+_gXPF\s*$", symbols
+    )
+    if not gxpf_match:
+        raise SystemExit(f"missing _gXPF symbol ({arch}): {artifact}")
+    gxpf_address = int(gxpf_match.group(1), 16)
+    disassembly = subprocess.check_output(
+        ["xcrun", "otool", "-arch", arch, "-tvV", str(artifact)], text=True
+    )
+    for symbol, offset in required_offsets.items():
+        match = re.search(
+            rf"(?ms)^(?:[0-9a-f]+\s+)?{re.escape(symbol)}:\s*\n"
+            rf"(.*?)(?=^(?:[0-9a-f]+\s+)?_\S*:\s*\n|\Z)",
+            disassembly,
+        )
+        if not match:
+            raise SystemExit(f"missing symbol {symbol} ({arch}): {artifact}")
+        offset_value = int(offset, 16)
+        # Clang may either materialize &gXPF first and keep the member offset in
+        # the load/store, or fold gXPF's page offset into that displacement.
+        displacements = {offset_value, (gxpf_address & 0xfff) + offset_value}
+        operand_patterns = [
+            rf"(?<![0-9a-f])#(?:0x{value:x}|{value})(?![0-9a-f])"
+            for value in displacements
+        ]
+        if not any(
+            re.search(pattern, match.group(1), re.IGNORECASE)
+            for pattern in operand_patterns
+        ):
+            raise SystemExit(
+                f"{symbol} does not access gXPF + {offset} ({arch}): {artifact}"
+            )
+
+binary = artifact.read_bytes()
+for forbidden in (b"xpf_sptm_txm_init", b"decompressedSptm", b"decompressedTxm"):
+    if forbidden in binary:
+        raise SystemExit(f"forbidden optional-image marker {forbidden!r}: {artifact}")
+PY
+}
+
+CHOMA_COMMIT=b1a4f2debf2aff70edc2825c5cfbd05926d7fc18
+CHOMA_DIR="$ROOT/build/deps/ChOma"
+if [ ! -d "$CHOMA_DIR/.git" ]; then
+    [[ ! -e "$CHOMA_DIR" ]] || die "ChOma 依赖目录存在但不是 Git checkout"
+    say "拉取固定版本 ChOma ..."
+    mkdir -p "$(dirname "$CHOMA_DIR")"
+    git clone --no-checkout https://github.com/opa334/ChOma \
+        "$CHOMA_DIR" >/dev/null 2>&1 || die "无法拉取 ChOma"
+fi
+git -C "$CHOMA_DIR" fetch --depth 1 origin "$CHOMA_COMMIT" >/dev/null 2>&1 \
+    || die "无法获取固定 ChOma 提交 $CHOMA_COMMIT"
+git -C "$CHOMA_DIR" checkout --detach "$CHOMA_COMMIT" >/dev/null 2>&1 \
+    || die "无法切换到固定 ChOma 提交 $CHOMA_COMMIT"
+[[ "$(git -C "$CHOMA_DIR" rev-parse HEAD)" == "$CHOMA_COMMIT" ]] \
+    || die "ChOma 版本不一致"
+
+# 这里会实际编译头文件中的三条 ABI 断言；失败信息分别包含
+# "AX 1.2.8 firstItem ABI"、ignoreBaseSet ABI 和 XPF size。
+IOS_SDK="$(xcrun --sdk iphoneos --show-sdk-path)"
+xcrun --sdk iphoneos clang -fsyntax-only -arch arm64 -isysroot "$IOS_SDK" \
+    -DXPF_LAYOUT_ONLY "$ROOT/tests/xpf_ax128_layout_test.c" \
+    || die "XPF AX 1.2.8 布局编译门禁失败"
+xcrun --sdk iphoneos clang -fsyntax-only -arch arm64 -isysroot "$IOS_SDK" \
+    -DXPF_LAYOUT_ONLY -DXPF_TEST_LARA_HEADER "$ROOT/tests/xpf_ax128_layout_test.c" \
+    || die "Lara XPF AX 1.2.8 布局编译门禁失败"
 command -v ldid >/dev/null 2>&1 || die "缺少 ldid（brew install ldid）"
 mkdir -p "$ROOT/build"
-if ! make -C "$XPF_DIR" output/ios/libxpf.dylib \
+if ! make -B -C "$XPF_DIR" output/ios/libxpf.dylib CHOMA_PATH="$CHOMA_DIR" \
         >"$ROOT/build/xpf-build.log" 2>&1; then
     tail -40 "$ROOT/build/xpf-build.log" >&2
     die "libxpf 编译失败，见 build/xpf-build.log"
 fi
-cp "$XPF_DIR/output/ios/libxpf.dylib" "$ROOT/lara/lib/libxpf.dylib"
-# 断言：出货 dylib 必须含 iOS 26 修复引入的 fallback，否则说明又编进了旧版。
-LC_ALL=C grep -a -q -- "arm_maxoffset" "$ROOT/lara/lib/libxpf.dylib" \
-    || die "libxpf.dylib 缺少 arm_maxoffset —— 仍会编译进旧版 XPF"
-ok "libxpf.dylib 已由源码重建（含 arm_maxoffset）"
+verify_xpf_binary_layout "$XPF_DIR/output/ios/libxpf.dylib" arm64 arm64e
+
+# 不将上面的 ABI 验证 dylib 复制到 App。生产链重新以 arm64e / 16.5.1
+# 编译同一份 XPF + ChOma 源码，并通过 -force_load 并入主 Mach-O。
+STATIC_DIR="$ROOT/build/static-ios"
+reset_build_dir "$STATIC_DIR"
+mkdir -p "$STATIC_DIR/obj/xpf" "$STATIC_DIR/obj/grabkernel"
+
+xpf_sources=(
+    "$XPF_DIR/src/bad_recovery.c"
+    "$XPF_DIR/src/common.c"
+    "$XPF_DIR/src/decompress.c"
+    "$XPF_DIR/src/non_ppl.c"
+    "$XPF_DIR/src/ppl.c"
+    "$XPF_DIR/src/xpf.c"
+)
+choma_sources=("$CHOMA_DIR"/src/*.c)
+[[ -e "${choma_sources[0]}" ]] || die "ChOma 源码不完整"
+xpf_objects=()
+xpf_index=0
+for source in "${xpf_sources[@]}" "${choma_sources[@]}"; do
+    object="$STATIC_DIR/obj/xpf/$xpf_index.o"
+    xcrun --sdk iphoneos clang -c -O2 -fblocks -arch arm64e \
+        -isysroot "$IOS_SDK" -miphoneos-version-min=16.5.1 \
+        -I"$XPF_DIR/src" -I"$CHOMA_DIR/include" \
+        "$source" -o "$object" \
+        || die "XPF 静态对象编译失败：$source"
+    xpf_objects+=("$object")
+    xpf_index=$((xpf_index + 1))
+done
+xcrun --sdk iphoneos libtool -static -o "$STATIC_DIR/libxpf.a" "${xpf_objects[@]}" \
+    || die "libxpf.a 归档失败"
+XPF_ARCHIVE_SYMBOLS="$(LC_ALL=C xcrun nm -g "$STATIC_DIR/libxpf.a")"
+grep -q ' _xpf_start_with_kernel_path$' <<<"$XPF_ARCHIVE_SYMBOLS" \
+    || die "libxpf.a 缺少公开入口"
+LC_ALL=C grep -a -q -- "arm_maxoffset" "$STATIC_DIR/libxpf.a" \
+    || die "libxpf.a 缺少 arm_maxoffset 兼容 finder"
+
+# libgrabkernel2 上游本身产出静态库。固定提交并只编译 src/*.m；
+# Partial 符号由当前 target 中已静态编译的 Partial.m 解析，不再嵌入 dylib。
+GRABKERNEL_COMMIT=e015c73aee6c2d3f6b0aad3fa629fe4c0429b7a6
+GRABKERNEL_DIR="$ROOT/build/deps/libgrabkernel2"
+if [[ ! -d "$GRABKERNEL_DIR/.git" ]]; then
+    [[ ! -e "$GRABKERNEL_DIR" ]] || die "libgrabkernel2 依赖目录存在但不是 Git checkout"
+    mkdir -p "$(dirname "$GRABKERNEL_DIR")"
+    git clone --no-checkout https://github.com/alfiecg24/libgrabkernel2.git \
+        "$GRABKERNEL_DIR" >/dev/null 2>&1 || die "无法拉取 libgrabkernel2"
+fi
+git -C "$GRABKERNEL_DIR" fetch --depth 1 origin "$GRABKERNEL_COMMIT" >/dev/null 2>&1 \
+    || die "无法获取 libgrabkernel2 固定提交 $GRABKERNEL_COMMIT"
+git -C "$GRABKERNEL_DIR" checkout --detach "$GRABKERNEL_COMMIT" >/dev/null 2>&1 \
+    || die "无法切换 libgrabkernel2 固定提交"
+[[ "$(git -C "$GRABKERNEL_DIR" rev-parse HEAD)" == "$GRABKERNEL_COMMIT" ]] \
+    || die "libgrabkernel2 版本不一致"
+grab_sources=("$GRABKERNEL_DIR"/src/*.m)
+[[ -e "${grab_sources[0]}" ]] || die "libgrabkernel2 源码不完整"
+grab_objects=()
+grab_index=0
+for source in "${grab_sources[@]}"; do
+    object="$STATIC_DIR/obj/grabkernel/$grab_index.o"
+    xcrun --sdk iphoneos clang -c -O3 -fPIC -fobjc-arc -arch arm64e \
+        -isysroot "$IOS_SDK" -miphoneos-version-min=16.5.1 \
+        -I"$GRABKERNEL_DIR/include" -I"$GRABKERNEL_DIR/_external/include" \
+        "$source" -o "$object" \
+        || die "libgrabkernel2 静态对象编译失败：$source"
+    grab_objects+=("$object")
+    grab_index=$((grab_index + 1))
+done
+xcrun --sdk iphoneos libtool -static -o "$STATIC_DIR/libgrabkernel2.a" "${grab_objects[@]}" \
+    || die "libgrabkernel2.a 归档失败"
+GRAB_ARCHIVE_SYMBOLS="$(LC_ALL=C xcrun nm -g "$STATIC_DIR/libgrabkernel2.a")"
+grep -q ' _grab_kernelcache$' <<<"$GRAB_ARCHIVE_SYMBOLS" \
+    || die "libgrabkernel2.a 缺少 grab_kernelcache"
+ok "XPF 与 libgrabkernel2 静态库已就绪（arm64e / iOS 16.5.1）"
 
 need_files=(
     "lara/kexploit/wzmem.h"
@@ -133,14 +472,13 @@ grep -q 'wz_read' "$ROOT/lara/kexploit/wz/YuanbaoCollector.mm" \
 grep -q 'wz_read' "$ROOT/lara/kexploit/wz/KoiProjection.mm" \
     || die "王者投影未接统一 transport"
 
-rm -rf "$DERIVED"
+reset_build_dir "$DERIVED"
 mkdir -p "$ROOT/build"
-SOURCE_COMMIT=$(git rev-parse --short=12 HEAD 2>/dev/null || echo nogit)
-say "构建 lara-wz ($CONFIG)..."
+say "构建 AX Pro ($CONFIG, source=$SOURCE_STATE/$SOURCE_COMMIT_SHORT)..."
 set +e
 xcodebuild \
-    -project "$ROOT/$APP.xcodeproj" \
-    -scheme "$APP" \
+    -project "$ROOT/$PROJECT.xcodeproj" \
+    -scheme "$SCHEME" \
     -configuration "$CONFIG" \
     -derivedDataPath "$DERIVED" \
     -destination 'generic/platform=iOS' \
@@ -157,25 +495,98 @@ if [[ $status -ne 0 ]]; then
     die "xcodebuild 失败，见 build/xcodebuild-wz.log"
 fi
 
-SRC_APP="$DERIVED/Build/Products/$CONFIG-iphoneos/$APP.app"
-BIN="$SRC_APP/$APP"
+SRC_APP="$DERIVED/Build/Products/$CONFIG-iphoneos/$PRODUCT_NAME.app"
+BIN="$SRC_APP/$PRODUCT_NAME"
 [[ -f "$BIN" ]] || die "构建后未找到 $BIN"
 INFO_PLIST="$SRC_APP/Info.plist"
 [[ -f "$INFO_PLIST" ]] || die "构建后未找到 Info.plist"
 
-say "使用 AX 本地双窗口权限签名 App（纯进程内托管，无 SpringBoard 注入）..."
-ldid -S"$ROOT/Config/lara.entitlements" "$BIN"
+say "使用 AX 本地双窗口权限签名 App bundle（纯进程内托管，无 SpringBoard 注入）..."
+# 对 bundle 做 shallow sign，既保留只签主 Mach-O 的边界，也生成与资源匹配的
+# _CodeSignature/CodeResources；只签可执行文件会留下未密封的 App bundle。
+ldid -w -S"$ROOT/Config/lara.entitlements" "$SRC_APP"
 entitlements=$(ldid -e "$BIN")
 grep -q 'com.apple.QuartzCore.displayable-context' <<<"$entitlements" \
     || die "主 executable 签名缺少 displayable-context"
 grep -q 'com.apple.springboard.accessibility-window-hosting' <<<"$entitlements" \
     || die "主 executable 签名缺少 accessibility-window-hosting"
+[[ -f "$SRC_APP/_CodeSignature/CodeResources" ]] \
+    || die "App bundle 签名未生成 _CodeSignature/CodeResources"
+# AX 1.2.8 参考 plist 没有工程自定义的构建指纹；提交信息只写入
+# IPA 旁边的 JSON 清单。PlistBuddy 仅用于清理旧 DerivedData 可能残留的键。
 /usr/libexec/PlistBuddy -c 'Delete :LARABuildSourceCommit' "$INFO_PLIST" \
     >/dev/null 2>&1 || true
-/usr/libexec/PlistBuddy -c "Add :LARABuildSourceCommit string $SOURCE_COMMIT" \
-    "$INFO_PLIST"
-[[ "$(/usr/libexec/PlistBuddy -c 'Print :LARABuildSourceCommit' "$INFO_PLIST")" == "$SOURCE_COMMIT" ]] \
-    || die "Info.plist 未写入源码提交标识"
+
+python3 - "$INFO_PLIST" <<'PY' || die "最终 Info.plist 与 AX 1.2.8 包体契约不一致"
+import pathlib
+import plistlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+with path.open("rb") as stream:
+    info = plistlib.load(stream)
+
+expected = {
+    "CFBundleDisplayName": "AX Pro",
+    "CFBundleName": "AX Pro",
+    "CFBundleExecutable": "AX Pro",
+    "CFBundleIdentifier": "com.ax.ax",
+    "CFBundleShortVersionString": "1.2.8",
+    "CFBundleVersion": "1",
+    "MinimumOSVersion": "16.5.1",
+    "UILaunchStoryboardName": "LaunchScreen",
+    "UIApplicationSupportsIndirectInputEvents": True,
+    "UISupportedInterfaceOrientations": [
+        "UIInterfaceOrientationPortrait",
+        "UIInterfaceOrientationLandscapeLeft",
+        "UIInterfaceOrientationLandscapeRight",
+        "UIInterfaceOrientationPortraitUpsideDown",
+    ],
+    "UISupportedInterfaceOrientations~ipad": [
+        "UIInterfaceOrientationPortrait",
+        "UIInterfaceOrientationPortraitUpsideDown",
+        "UIInterfaceOrientationLandscapeLeft",
+        "UIInterfaceOrientationLandscapeRight",
+    ],
+    "UISupportedInterfaceOrientations~iphone": [
+        "UIInterfaceOrientationPortrait",
+        "UIInterfaceOrientationLandscapeLeft",
+        "UIInterfaceOrientationLandscapeRight",
+    ],
+    "UIRequiredDeviceCapabilities": ["arm64e"],
+}
+for key, value in expected.items():
+    if info.get(key) != value:
+        raise SystemExit(f"{key}: expected {value!r}, got {info.get(key)!r}")
+
+expected_icons = {
+    "CFBundlePrimaryIcon": {
+        "CFBundleIconFiles": ["AppIcon60x60"],
+        "CFBundleIconName": "AppIcon",
+    }
+}
+expected_ipad_icons = {
+    "CFBundlePrimaryIcon": {
+        "CFBundleIconFiles": ["AppIcon60x60", "AppIcon76x76"],
+        "CFBundleIconName": "AppIcon",
+    }
+}
+if info.get("CFBundleIcons") != expected_icons:
+    raise SystemExit("CFBundleIcons mismatch")
+if info.get("CFBundleIcons~ipad") != expected_ipad_icons:
+    raise SystemExit("CFBundleIcons~ipad mismatch")
+
+for forbidden in (
+    "UIFileSharingEnabled",
+    "LSSupportsOpeningDocumentsInPlace",
+    "UIRequiresFullScreen",
+    "UIViewControllerBasedStatusBarAppearance",
+    "UILaunchScreen",
+    "LARABuildSourceCommit",
+):
+    if forbidden in info:
+        raise SystemExit(f"forbidden extra plist key: {forbidden}")
+PY
 
 for object in wzmem.o wzesp.o KoiProjection.o YuanbaoCollector.o WZAXTouch.o WZHUDBridge.o laramgr.o; do
     find "$DERIVED" -name "$object" -print -quit | grep -q . \
@@ -219,34 +630,39 @@ for forbidden in --wzhud-host posix_spawn direct_remote_ WZHUDFloatWindow; do
         && die "最终二进制仍混入已删除的 HUD 路径：$forbidden"
 done
 
-# 最终 App 内嵌的 libxpf 必须就是源码重建的那份（含 iOS 26 修复的 fallback）。
-# 这条断言用于堵住「源码修了但出货二进制还是旧的」这一类静默复发。
-XPF_EMBEDDED="$SRC_APP/Frameworks/libxpf.dylib"
-[[ -f "$XPF_EMBEDDED" ]] || die "最终 App 未内嵌 libxpf.dylib"
+# XPF_EMBEDDED 现在就是主 Mach-O：静态链接后继续用同一反汇编门禁核对 ABI。
+XPF_EMBEDDED="$BIN"
+verify_xpf_binary_layout "$XPF_EMBEDDED" arm64e
 LC_ALL=C grep -a -q -- "arm_maxoffset" "$XPF_EMBEDDED" \
-    || die "内嵌 libxpf.dylib 缺少 arm_maxoffset —— 出货的是旧版 XPF"
-[[ "$(shasum -a 256 "$XPF_EMBEDDED" | awk '{print $1}')" == \
-   "$(shasum -a 256 "$ROOT/lara/lib/libxpf.dylib" | awk '{print $1}')" ]] \
-    || die "内嵌 libxpf.dylib 与源码重建产物不一致"
+    || die "主 Mach-O 缺少 arm_maxoffset 兼容 finder"
+MAIN_SYMBOLS="$(xcrun nm -g "$BIN")"
+grep -q ' _xpf_start_with_kernel_path$' <<<"$MAIN_SYMBOLS" \
+    || die "主 Mach-O 未静态并入 libxpf"
+grep -q ' _grab_kernelcache$' <<<"$MAIN_SYMBOLS" \
+    || die "主 Mach-O 未静态并入 libgrabkernel2"
 
-# install name 必须让 dyld 找到 Frameworks/ 下的那份。
-# 上游 XPF 的 Makefile 默认 -install_name @loader_path/libxpf.dylib；对主可执行文件
-# 而言 @loader_path 是 lara.app/，会去找不存在的 lara.app/libxpf.dylib，
-# 结果就是「打开即闪退，dyld: Library not loaded」。
-LC_ALL=C grep -a -q -- "@loader_path/libxpf.dylib" "$BIN" \
-    && die "主二进制以 @loader_path 引用 libxpf，运行时会解析到 lara.app/ 而非 Frameworks/"
-LC_ALL=C grep -a -q -- "@executable_path/Frameworks/libxpf.dylib" "$BIN" \
-    || die "主二进制未以 @executable_path/Frameworks/libxpf.dylib 引用 libxpf"
+# AX 1.2.8 没有 Frameworks 目录，且所有 load command 都指向系统库。
+[[ ! -e "$SRC_APP/Frameworks" ]] || die "最终 App 仍包含 Frameworks 目录"
+NON_SYSTEM_LOADS="$(xcrun otool -L "$BIN" | tail -n +2 | awk '{print $1}' \
+    | grep -Ev '^(/System/Library/|/usr/lib/)' || true)"
+[[ -z "$NON_SYSTEM_LOADS" ]] \
+    || die "主 Mach-O 仍有非系统动态依赖：$NON_SYSTEM_LOADS"
+MAIN_LOAD_COMMANDS="$(xcrun otool -l "$BIN")"
+if grep -q 'cmd LC_RPATH' <<<"$MAIN_LOAD_COMMANDS"; then
+    die "主 Mach-O 仍包含 AX 1.2.8 参考不存在的 LC_RPATH"
+fi
 [[ -f "$SRC_APP/Rajdhani Bold.otf" ]] \
     || die "最终 App 未包含 AX Rajdhani 字体"
 [[ "$(shasum -a 256 "$SRC_APP/Rajdhani Bold.otf" | awk '{print $1}')" == \
    "03d4c893f1406cb68cf0c26c1c3112f2758e5e836d7b9cd3825b974f452ff261" ]] \
     || die "AX Rajdhani 字体摘要不一致"
-[[ -f "$SRC_APP/AXReference.bundle/Assets.car" ]] \
-    || die "最终 App 未包含 AX 原始资源 catalog"
-[[ "$(shasum -a 256 "$SRC_APP/AXReference.bundle/Assets.car" | awk '{print $1}')" == \
+[[ -f "$SRC_APP/Assets.car" ]] \
+    || die "最终 App 主 bundle 根未包含 AX 原始 Assets.car"
+[[ "$(shasum -a 256 "$SRC_APP/Assets.car" | awk '{print $1}')" == \
    "214c984a048adf3131f39afd95fc883a4f9edef48a08feccb51bd2beb63bf4cb" ]] \
     || die "AX 原始资源 catalog 摘要不一致"
+[[ ! -e "$SRC_APP/AXReference.bundle" ]] \
+    || die "Assets.car 仍被包在 AXReference.bundle 而非主 bundle 根"
 [[ "$(shasum -a 256 "$SRC_APP/AppIcon60x60@2x.png" | awk '{print $1}')" == \
    "b5b43be770b6514384393dee2d0ceca9aac9476fb32283d8d719f18525fdf2d0" ]] \
     || die "AX iPhone 图标摘要不一致"
@@ -254,31 +670,177 @@ LC_ALL=C grep -a -q -- "@executable_path/Frameworks/libxpf.dylib" "$BIN" \
    "67d418de12c8c9521a80c6bab887ae56e9e00df757f2c0d4befb5b5d23832792" ]] \
     || die "AX iPad 图标摘要不一致"
 
-WZ_UUID="6a838f46-a5e8-3ec9-bbce-6b01ab2ffad4"
-FINGERPRINT=$(shasum -a 256 \
-    "$ROOT/lara/kexploit/wzmem.m" \
-    "$ROOT/lara/kexploit/wzesp.mm" \
-    "$ROOT/lara/kexploit/wz/YuanbaoCollector.mm" \
-    "$ROOT/lara/classes/laramgr.swift" | shasum -a 256 | awk '{print substr($1,1,12)}')
-PACKAGE_STEM="lara-wz-${SOURCE_COMMIT}-${FINGERPRINT}-${WZ_UUID}"
-STAGE="$ROOT/build/package-wz"
-rm -rf "$STAGE"
-mkdir -p "$STAGE/Payload"
-cp -R "$SRC_APP" "$STAGE/Payload/$APP.app"
-(cd "$STAGE" && zip -qry "$ROOT/$PACKAGE_STEM.ipa" Payload)
+python3 - "$SRC_APP" "$PRODUCT_NAME" <<'PY' \
+    || die "App bundle 根条目与 AX 1.2.8 不一致"
+import pathlib
+import sys
 
-cat > "$ROOT/$PACKAGE_STEM.json" <<JSON
+root = pathlib.Path(sys.argv[1])
+executable = sys.argv[2]
+required_files = {
+    executable,
+    "Info.plist",
+    "Assets.car",
+    "AppIcon60x60@2x.png",
+    "AppIcon76x76@2x~ipad.png",
+    "Rajdhani Bold.otf",
+}
+actual_files = {entry.name for entry in root.iterdir() if entry.is_file()}
+missing = required_files - actual_files
+extra = actual_files - required_files
+if missing:
+    raise SystemExit(f"missing root files: {sorted(missing)}")
+if extra:
+    raise SystemExit(f"unexpected root files: {sorted(extra)}")
+directories = {entry.name for entry in root.iterdir() if entry.is_dir()}
+unexpected_directories = directories - {"_CodeSignature"}
+if unexpected_directories:
+    raise SystemExit(f"unexpected root directories: {sorted(unexpected_directories)}")
+signature = root / "_CodeSignature"
+if not signature.is_dir():
+    raise SystemExit("missing _CodeSignature directory")
+signature_entries = {
+    entry.relative_to(signature).as_posix()
+    for entry in signature.rglob("*")
+    if entry.is_file()
+}
+if signature_entries != {"CodeResources"}:
+    raise SystemExit(f"signature entries mismatch: {sorted(signature_entries)}")
+PY
+
+WZ_UUID="6a838f46-a5e8-3ec9-bbce-6b01ab2ffad4"
+PACKAGE_STEM="AX-Pro-1.2.8-${SOURCE_COMMIT_SHORT}-${SOURCE_FINGERPRINT_SHORT}-${WZ_UUID}"
+STAGE="$ROOT/build/package-wz"
+OUTPUT_IPA="$ROOT/$PACKAGE_STEM.ipa"
+OUTPUT_MANIFEST="$ROOT/$PACKAGE_STEM.json"
+SOURCE_MANIFEST="$ROOT/$PACKAGE_STEM.sources.jsonl"
+CHECKSUM_MANIFEST="$ROOT/$PACKAGE_STEM.sha256"
+reset_build_dir "$STAGE"
+remove_previous_output "$OUTPUT_IPA"
+remove_previous_output "$OUTPUT_MANIFEST"
+remove_previous_output "$SOURCE_MANIFEST"
+remove_previous_output "$CHECKSUM_MANIFEST"
+cp "$SOURCE_MANIFEST_TMP" "$SOURCE_MANIFEST"
+mkdir -p "$STAGE/Payload"
+cp -R "$SRC_APP" "$STAGE/Payload/$PRODUCT_NAME.app"
+(cd "$STAGE" && zip -qry "$OUTPUT_IPA" Payload)
+
+python3 - "$OUTPUT_IPA" <<'PY' \
+    || die "最终 IPA 的 ZIP 条目、plist 或资源与 AX 1.2.8 契约不一致"
+import hashlib
+import plistlib
+import sys
+import zipfile
+from collections import Counter
+
+archive = sys.argv[1]
+prefix = "Payload/AX Pro.app/"
+required = {
+    "AX Pro",
+    "Info.plist",
+    "Assets.car",
+    "AppIcon60x60@2x.png",
+    "AppIcon76x76@2x~ipad.png",
+    "Rajdhani Bold.otf",
+}
+expected_hashes = {
+    "Assets.car": "214c984a048adf3131f39afd95fc883a4f9edef48a08feccb51bd2beb63bf4cb",
+    "AppIcon60x60@2x.png": "b5b43be770b6514384393dee2d0ceca9aac9476fb32283d8d719f18525fdf2d0",
+    "AppIcon76x76@2x~ipad.png": "67d418de12c8c9521a80c6bab887ae56e9e00df757f2c0d4befb5b5d23832792",
+    "Rajdhani Bold.otf": "03d4c893f1406cb68cf0c26c1c3112f2758e5e836d7b9cd3825b974f452ff261",
+}
+with zipfile.ZipFile(archive) as ipa:
+    name_list = ipa.namelist()
+    names = set(name_list)
+    duplicates = sorted(name for name, count in Counter(name_list).items() if count > 1)
+    if duplicates:
+        raise SystemExit(f"duplicate ZIP entries: {duplicates}")
+    if not any(name == prefix or name.startswith(prefix) for name in names):
+        raise SystemExit("missing Payload/AX Pro.app")
+    outside = {
+        name for name in names
+        if name not in {"Payload/", prefix} and not name.startswith(prefix)
+    }
+    if outside:
+        raise SystemExit(f"entries outside AX Pro.app: {sorted(outside)}")
+    relative = {
+        name[len(prefix):]
+        for name in names
+        if name.startswith(prefix) and name != prefix
+    }
+    direct_files = {name for name in relative if "/" not in name.rstrip("/") and not name.endswith("/")}
+    if direct_files != required:
+        raise SystemExit(
+            f"root files mismatch: missing={sorted(required-direct_files)}, "
+            f"extra={sorted(direct_files-required)}"
+        )
+    forbidden_nested = {
+        name for name in relative
+        if "/" in name.rstrip("/") and not name.startswith("_CodeSignature/")
+    }
+    if forbidden_nested:
+        raise SystemExit(f"unexpected nested entries: {sorted(forbidden_nested)}")
+    if prefix + "_CodeSignature/CodeResources" not in names:
+        raise SystemExit("missing _CodeSignature/CodeResources")
+    signature_files = {
+        name for name in relative
+        if name.startswith("_CodeSignature/") and not name.endswith("/")
+    }
+    if signature_files != {"_CodeSignature/CodeResources"}:
+        raise SystemExit(f"signature entries mismatch: {sorted(signature_files)}")
+    for name, expected in expected_hashes.items():
+        actual = hashlib.sha256(ipa.read(prefix + name)).hexdigest()
+        if actual != expected:
+            raise SystemExit(f"hash mismatch for {name}: {actual}")
+    info = plistlib.loads(ipa.read(prefix + "Info.plist"))
+    for key, expected in {
+        "CFBundleExecutable": "AX Pro",
+        "CFBundleIdentifier": "com.ax.ax",
+        "MinimumOSVersion": "16.5.1",
+        "UILaunchStoryboardName": "LaunchScreen",
+    }.items():
+        if info.get(key) != expected:
+            raise SystemExit(f"zipped plist mismatch for {key}: {info.get(key)!r}")
+    for forbidden in ("UIFileSharingEnabled", "LSSupportsOpeningDocumentsInPlace", "UIRequiresFullScreen"):
+        if forbidden in info:
+            raise SystemExit(f"zipped plist contains forbidden key: {forbidden}")
+PY
+
+IPA_SHA256=$(shasum -a 256 "$OUTPUT_IPA" | awk '{print $1}')
+BUILD_LOG_SHA256=$(shasum -a 256 "$ROOT/build/xcodebuild-wz.log" | awk '{print $1}')
+cat > "$OUTPUT_MANIFEST" <<JSON
 {
   "targetProcess": "smoba",
   "targetBundle": "com.tencent.smoba",
   "targetVersion": "11.4.10103",
   "unityFrameworkUUID": "$WZ_UUID",
+  "sourceState": "$SOURCE_STATE",
   "sourceCommit": "$SOURCE_COMMIT",
-  "sourceFingerprint": "$FINGERPRINT",
+  "sourceTree": "$SOURCE_TREE",
+  "sourceFingerprint": "$SOURCE_FINGERPRINT",
+  "sourceManifest": "${SOURCE_MANIFEST##*/}",
+  "sourceManifestSha256": "$SOURCE_MANIFEST_SHA256",
+  "ipaSha256": "$IPA_SHA256",
+  "buildLogSha256": "$BUILD_LOG_SHA256",
   "transportPolicy": "mach-task-readonly-or-mapped-pages",
   "writeFeaturesEnabled": false
 }
 JSON
 
-ok "输出：$PACKAGE_STEM.ipa"
-ok "清单：$PACKAGE_STEM.json"
+(
+    cd "$ROOT"
+    shasum -a 256 \
+        "${OUTPUT_IPA##*/}" \
+        "${OUTPUT_MANIFEST##*/}" \
+        "${SOURCE_MANIFEST##*/}" \
+        "build/xcodebuild-wz.log"
+) > "$CHECKSUM_MANIFEST"
+(
+    cd "$ROOT"
+    shasum -a 256 -c "${CHECKSUM_MANIFEST##*/}"
+) || die "产物校验清单自检失败"
+
+ok "输出：$OUTPUT_IPA"
+ok "清单：$OUTPUT_MANIFEST"
+ok "源码清单：$SOURCE_MANIFEST"
+ok "校验清单：$CHECKSUM_MANIFEST"

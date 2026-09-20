@@ -119,6 +119,8 @@ final class laramgr: ObservableObject {
     }
     private var wzHostingRequests: [() -> Void] = []
     private var wzTerminating = false
+    private var wzSceneDisconnecting = false
+    private var wzSceneEpoch: UInt64 = 0
     private var wzLaunchPending = false
     lazy var ytProc = RemoteCall(process: "youtube", useMigFilterBypass: false)
     @Published var wzAttached: Bool = false
@@ -148,6 +150,7 @@ final class laramgr: ObservableObject {
     static let italicfontpath = "/System/Library/Fonts/Core/SFUIItalic.ttf"
     static let monofontpath = "/System/Library/Fonts/Core/SFUIMono.ttf"
     init() {
+        wzWorker.setSpecific(key: wzWorkerKey, value: 1)
         wzhud_set_action_callback(wzHUDActionHandler)
     }
 
@@ -272,7 +275,20 @@ final class laramgr: ObservableObject {
     
     // All WZ operations run on this queue. The main queue owns UI settings.
     private let wzWorker = DispatchQueue(label: "lara.wz.session", qos: .userInitiated)
+    private let wzWorkerKey = DispatchSpecificKey<UInt8>()
+    // AX destroy wrapper@0x1006ffba8 retains failed objects in a deduplicated
+    // pending registry.  This dictionary is accessed only on wzWorker.
+    private var wzPendingRemoteCleanup: [ObjectIdentifier: RemoteCall] = [:]
+    // AX 1.2.8 0x100810554..0x10081057c and
+    // 0x1008123f0..0x100812418 create two independent utility serial queues.
+    private let wzAuxiliaryReader = DispatchQueue(
+        label: "com.draw.auxiliary-page-reader", qos: .utility)
+    private let wzAutoKillReader = DispatchQueue(
+        label: "com.axpro.autokill.reader", qos: .utility)
     private var wzTimer: DispatchSourceTimer?
+    private var wzReaderGeneration: UInt64 = 0
+    private var wzAuxiliaryReaderInFlight = false
+    private var wzAutoKillReaderInFlight = false
     private var wzEpoch: UInt64 = 0
     private var wzLaunchEpoch: UInt64 = 0
     private var wzLastResult = ""
@@ -370,12 +386,17 @@ final class laramgr: ObservableObject {
         }
     }
     func prepareWZEnvironment(connectWhenReady: Bool = true) {
-        guard !dsrunning, !wzRunning, !wzAttached else { return }
+        guard !wzTerminating, !wzSceneDisconnecting,
+              !dsrunning, !wzRunning, !wzAttached else { return }
+        let sceneEpoch = wzSceneEpoch
         if !dsready {
             offsets_init()
             wzStatus = "正在初始化内核环境"
             run { [weak self] success in
                 guard let self else { return }
+                guard self.wzSceneEpoch == sceneEpoch,
+                      !self.wzTerminating,
+                      !self.wzSceneDisconnecting else { return }
                 if success {
                     self.prepareWZEnvironment(connectWhenReady: connectWhenReady)
                 } else {
@@ -394,6 +415,9 @@ final class laramgr: ObservableObject {
                 let loaded = fetched && dlkcache()
                 DispatchQueue.main.async {
                     guard let self else { return }
+                    guard self.wzSceneEpoch == sceneEpoch,
+                          !self.wzTerminating,
+                          !self.wzSceneDisconnecting else { return }
                     self.hasOffsets = loaded
                     self.wzRunning = false
                     if loaded {
@@ -427,7 +451,13 @@ final class laramgr: ObservableObject {
         }
     }
     func launchWZGame() {
-        guard !wzTerminating else { return }
+        guard !wzTerminating, !wzSceneDisconnecting else { return }
+        let support = axDeviceSupportStatus()
+        guard support.isSupported else {
+            wzLaunchPending = false
+            wzStatus = "当前环境不支持：\(support.reason ?? support.identifier)"
+            return
+        }
         guard dsready, hasOffsets else {
             wzLaunchPending = true
             wzStatus = "正在初始化环境，完成后自动启动游戏"
@@ -478,7 +508,10 @@ final class laramgr: ObservableObject {
     // 所以恢复两级：本地注册成功就用本地；本地注册不到（iOS 26 上
     // SBSAccessibilityWindowHostingController 可能已不存在）就回落 SpringBoard。
     private func prepareWZSpringBoardHosting(completion: @escaping (Bool) -> Void) {
-        guard !wzTerminating else { completion(false); return }
+        guard !wzTerminating, !wzSceneDisconnecting else {
+            completion(false)
+            return
+        }
         guard dsready, wzGameHUDSessionArmed else { completion(false); return }
 
         if wzhud_local_hosting_ready() {
@@ -519,9 +552,13 @@ final class laramgr: ObservableObject {
                     self.sbProc = nil
                     self.rcready = false
                     self.wzWorker.async { [weak self] in
-                        abandonedProcess.destroy()
+                        guard let self else { return }
+                        _ = self.destroyRemoteCallOnWorker(abandonedProcess)
+                        for pendingProcess in Array(self.wzPendingRemoteCleanup.values) {
+                            _ = self.destroyRemoteCallOnWorker(pendingProcess)
+                        }
                         DispatchQueue.main.async {
-                            self?.wzSpringBoardInstallRunning = false
+                            self.wzSpringBoardInstallRunning = false
                             completion(false)
                         }
                     }
@@ -547,7 +584,12 @@ final class laramgr: ObservableObject {
             let ready = wzhud_register_springboard_hosts(remoteProcess)
             let detail = String(cString: wzhud_last_error())
             let installFailed = !ready
-            if installFailed { remoteProcess.destroy() }
+            if installFailed, let self {
+                _ = self.destroyRemoteCallOnWorker(remoteProcess)
+                for pendingProcess in Array(self.wzPendingRemoteCleanup.values) {
+                    _ = self.destroyRemoteCallOnWorker(pendingProcess)
+                }
+            }
             if ready { usleep(1_200_000) }
             DispatchQueue.main.async {
                 guard let self else { return }
@@ -619,6 +661,10 @@ final class laramgr: ObservableObject {
             let pid = wz_connected_pid()
             if valid {
                 wzesp_reset()
+                self.wzReaderGeneration &+= 1
+                self.wzAuxiliaryReaderInFlight = false
+                self.wzAutoKillReaderInFlight = false
+                wzesp_readers_start(self.wzReaderGeneration)
             } else {
                 wz_disconnect()
             }
@@ -678,7 +724,9 @@ final class laramgr: ObservableObject {
         wzTimer = nil
         wzWorker.async { [weak self] in
             guard let self else { return }
-            // The queue orders this after every in-flight read-only WZ frame.
+            // Invalidate, drain both independent readers, then clear caches
+            // and release the transport (AX 0x1008071d0/0x100807374 order).
+            self.stopWZReadersOnWorker()
             wzesp_reset()
             wz_disconnect()
             "none".withCString {
@@ -760,6 +808,52 @@ final class laramgr: ObservableObject {
         wzTimer = timer
         timer.resume()
     }
+    private func scheduleWZReaders(base: UInt64, flags: UInt32) {
+        let generation = wzReaderGeneration
+        let auxiliaryMask = UInt32(WZESP_SHOW_SKILL | WZESP_SHOW_MONSTER |
+            WZESP_SHOW_MONSTER_ENTITY | WZESP_SHOW_MONSTER_TIMER)
+        if flags & auxiliaryMask != 0 && !wzAuxiliaryReaderInFlight {
+            wzAuxiliaryReaderInFlight = true
+            wzAuxiliaryReader.async { [weak self] in
+                _ = wzesp_auxiliary_reader_tick(base, generation)
+                self?.wzWorker.async { [weak self] in
+                    guard let self, self.wzReaderGeneration == generation else { return }
+                    self.wzAuxiliaryReaderInFlight = false
+                }
+            }
+        }
+
+        var readerFlags: UInt32 = 0
+        if flags & UInt32(WZESP_SHOW_HERO_VISION | WZESP_SHOW_SOLDIER_VISION |
+                          WZESP_AUTO_KILL) != 0 {
+            readerFlags |= UInt32(WZESP_READER_HOST_POSITION)
+        }
+        if flags & UInt32(WZESP_AUTO_KILL) != 0 {
+            readerFlags |= UInt32(WZESP_READER_AUTO_KILL)
+        }
+        if readerFlags != 0 && !wzAutoKillReaderInFlight {
+            wzAutoKillReaderInFlight = true
+            wzAutoKillReader.async { [weak self] in
+                _ = wzesp_autokill_reader_tick(base, generation, readerFlags)
+                self?.wzWorker.async { [weak self] in
+                    guard let self, self.wzReaderGeneration == generation else { return }
+                    self.wzAutoKillReaderInFlight = false
+                }
+            }
+        }
+    }
+
+    private func stopWZReadersOnWorker() {
+        // Invalidate publication before waiting. Old completions therefore
+        // cannot overwrite an empty/new-session cache while the queues drain.
+        wzReaderGeneration &+= 1
+        wzesp_readers_stop(wzReaderGeneration)
+        wzAuxiliaryReader.sync {}
+        wzAutoKillReader.sync {}
+        wzAuxiliaryReaderInFlight = false
+        wzAutoKillReaderInFlight = false
+    }
+
     private func wzFrame() {
         let request = DispatchQueue.main.sync {
             var canvasWidth = Double(UIScreen.main.bounds.width)
@@ -783,6 +877,7 @@ final class laramgr: ObservableObject {
         let configChanged = fingerprint != wzLastConfigFingerprint
         wzLastConfigFingerprint = fingerprint
         wzLastHUDControlFlags = config.flags
+        scheduleWZReaders(base: request.1, flags: config.flags)
 
         wzTickNumber &+= 1
         wzFPSFrameCount += 1
@@ -818,6 +913,7 @@ final class laramgr: ObservableObject {
                 wzhud_update_wz_snapshot(nil, 0)
                 wzTimer?.cancel()
                 wzTimer = nil
+                stopWZReadersOnWorker()
                 wzesp_reset()
                 wz_disconnect()
                 "none".withCString {
@@ -912,7 +1008,7 @@ final class laramgr: ObservableObject {
 
     // AX starts the audio session before creating its first window.
     func startBackgroundAudio() {
-        guard !wzTerminating else { return }
+        guard !wzTerminating, !wzSceneDisconnecting else { return }
         audioKeepAliveEnabled = true
         installAudioObservers()
         if audioWatchdog == nil {
@@ -1049,30 +1145,180 @@ final class laramgr: ObservableObject {
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
     }
 
-    // AX 0x100007a70 -> 0x1006fb8c0 uses queue-specific dispatch_sync,
-    // then requestHUDTermination releases local windows. Drain completion
-    // events here because this worker's host/frame operations also use main.
-    // Never dispatch_sync to wzWorker here (its frame reader also uses main).
-    func terminateWZSession() {
-        wzTerminating = true
-        wzLaunchPending = false
-        wzLaunchEpoch &+= 1
-        wzEpoch &+= 1
-        wzTimer?.cancel()
-        wzTimer = nil
+    private struct WZRemoteCleanupResult {
+        var hostsRemoved = true
+        var currentDestroyed = true
+        var pendingRemaining = 0
+    }
+
+    // AX cleanup helper@0x1006fb8c0 executes directly when it is already on
+    // the cleanup queue and dispatch_syncs only for a different queue.
+    private func performWZCleanupSync<T>(_ body: () -> T) -> T {
+        if DispatchQueue.getSpecific(key: wzWorkerKey) == 1 {
+            return body()
+        }
+        return wzWorker.sync(execute: body)
+    }
+
+    @discardableResult
+    private func destroyRemoteCallOnWorker(_ remoteProcess: RemoteCall) -> Bool {
+        let key = ObjectIdentifier(remoteProcess)
+        let destroyed = wzhud_remote_cleanup_succeeded(remoteProcess.destroy())
+        if destroyed {
+            wzPendingRemoteCleanup.removeValue(forKey: key)
+        } else {
+            // Assignment by ObjectIdentifier is the pending-set dedup gate.
+            wzPendingRemoteCleanup[key] = remoteProcess
+        }
+        return destroyed
+    }
+
+    private func cleanupRemoteCallsOnWorker(
+        _ remoteProcess: RemoteCall?
+    ) -> WZRemoteCleanupResult {
+        var result = WZRemoteCleanupResult()
+        // remote unhost helper@0x100700284 releases draw before menu and
+        // clears its fields regardless of either result.
+        result.hostsRemoved = wzhud_unregister_springboard_hosts(remoteProcess)
+        if let remoteProcess {
+            result.currentDestroyed = destroyRemoteCallOnWorker(remoteProcess)
+        }
+
+        // Retry one snapshot after registering the current failure. A second
+        // failure stays strongly retained for the next serialized cleanup.
+        let pendingSnapshot = Array(wzPendingRemoteCleanup.values)
+        for pendingProcess in pendingSnapshot {
+            _ = destroyRemoteCallOnWorker(pendingProcess)
+        }
+        if let remoteProcess {
+            result.currentDestroyed =
+                wzPendingRemoteCleanup[ObjectIdentifier(remoteProcess)] == nil
+        }
+        result.pendingRemaining = wzPendingRemoteCleanup.count
+        return result
+    }
+
+    private func drainWZRemoteTeardown() {
+        let remoteProcess = sbProc
+        rcrunning = true
+        var result = WZRemoteCleanupResult()
+        if Thread.isMainThread {
+            // wzWorker frame reads may synchronously sample UIKit. Keep the
+            // main run loop serviceable while a non-worker caller enters the
+            // exact queue-specific/sync helper, then continue only after its
+            // completion has returned to main.
+            var finished = false
+            DispatchQueue.global(qos: .userInitiated).async {
+                let cleanupResult = self.performWZCleanupSync {
+                    self.cleanupRemoteCallsOnWorker(remoteProcess)
+                }
+                DispatchQueue.main.async {
+                    result = cleanupResult
+                    finished = true
+                    CFRunLoopStop(CFRunLoopGetMain())
+                }
+            }
+            while !finished {
+                CFRunLoopRun()
+            }
+        } else {
+            result = performWZCleanupSync {
+                cleanupRemoteCallsOnWorker(remoteProcess)
+            }
+        }
+        rcrunning = false
+        if sbProc === remoteProcess {
+            rcready = false
+            sbProc = nil
+        }
+        if !result.hostsRemoved {
+            rcLastError = "远端窗口注销报告失败，字段已按 AX 顺序清理"
+            logmsg("(wz.hud) unhost reported failure; fields cleared")
+        }
+        if result.pendingRemaining != 0 {
+            rcLastError = "RemoteCall cleanup pending: \(result.pendingRemaining)"
+            logmsg("RemoteCall cleanup pending: \(result.pendingRemaining)")
+        }
+    }
+
+    private func drainWZReaderTeardown() {
         var finished = false
-        rcdestroy {
-            // Also drain a canceled in-flight RC initializer's release block.
-            self.wzWorker.async {
+        wzWorker.async { [weak self] in
+            guard let self else {
                 DispatchQueue.main.async {
                     finished = true
                     CFRunLoopStop(CFRunLoopGetMain())
                 }
+                return
+            }
+            self.stopWZReadersOnWorker()
+            wzesp_reset()
+            wz_disconnect()
+            DispatchQueue.main.async {
+                finished = true
+                CFRunLoopStop(CFRunLoopGetMain())
             }
         }
         while !finished {
             CFRunLoopRun()
         }
+    }
+
+    // A UIScene disconnect is recoverable. Invalidate every old callback and
+    // release HUD/RC/memory/audio resources without setting the process-wide
+    // terminal flag; a later scene may start a fresh generation.
+    func disconnectWZSceneSession() {
+        guard !wzTerminating, !wzSceneDisconnecting else { return }
+        wzSceneDisconnecting = true
+        wzSceneEpoch &+= 1
+        wzLaunchPending = false
+        wzLaunchEpoch &+= 1
+        wzEpoch &+= 1
+        wzTimer?.cancel()
+        wzTimer = nil
+        wzHostingRequests.removeAll()
+        drainWZRemoteTeardown()
+        wzhud_request_termination_sync()
+        drainWZReaderTeardown()
+
+        "none".withCString {
+            wzhud_set_transport_state(false, false, $0)
+        }
+        wzhud_update_wz_snapshot(nil, 0)
+        wzAttached = false
+        wzRunning = false
+        wzBase = 0
+        wzTransportName = "none"
+        wzTransportCapabilities = 0
+        wzCanWrite = false
+        wzMeasuredFPS = 0
+        wzChainDiagnostic = "场景已断开"
+        wzStatus = "场景已断开"
+        wzLastResult = ""
+        wzLastHUDText = ""
+        wzLastHUDControlFlags = UInt32.max
+        wzLastConfigFingerprint = UInt64.max
+        stopBackgroundAudio()
+        wzSceneDisconnecting = false
+    }
+
+    // Process termination is permanent. Unlike a scene disconnect, all future
+    // launch/audio/RemoteCall requests remain closed after this point.
+    func terminateWZSession() {
+        // applicationWillTerminate@0x100007a44 is one-shot and calls remote
+        // cleanup@0x1006fb8c0 before requestHUDTermination@0x100007aac.
+        guard !wzTerminating else { return }
+        wzTerminating = true
+        wzSceneEpoch &+= 1
+        wzLaunchPending = false
+        wzLaunchEpoch &+= 1
+        wzEpoch &+= 1
+        wzTimer?.cancel()
+        wzTimer = nil
+        wzHostingRequests.removeAll()
+        drainWZRemoteTeardown()
+        wzhud_request_termination_sync()
+        drainWZReaderTeardown()
         stopBackgroundAudio()
     }
     
@@ -1671,10 +1917,11 @@ final class laramgr: ObservableObject {
     
     #if !DISABLE_REMOTECALL
     func rcinit(process: String, migbypass: Bool = false, completion: ((Bool) -> Void)? = nil) {
-        guard dsready, !wzTerminating else {
+        guard dsready, !wzTerminating, !wzSceneDisconnecting else {
             completion?(false)
             return
         }
+        let sceneEpoch = wzSceneEpoch
         if rcready {
             completion?(sbProc != nil)
             return
@@ -1696,8 +1943,15 @@ final class laramgr: ObservableObject {
             
             DispatchQueue.main.async {
                 guard let self = self else { return }
-                if self.wzTerminating {
-                    self.wzWorker.async { remoteProcess?.destroy() }
+                if self.wzTerminating || self.wzSceneDisconnecting ||
+                    self.wzSceneEpoch != sceneEpoch {
+                    self.wzWorker.async { [weak self, remoteProcess] in
+                        guard let self, let remoteProcess else { return }
+                        _ = self.destroyRemoteCallOnWorker(remoteProcess)
+                        for pendingProcess in Array(self.wzPendingRemoteCleanup.values) {
+                            _ = self.destroyRemoteCallOnWorker(pendingProcess)
+                        }
+                    }
                     self.rcrunning = false
                     completion?(false)
                     return
@@ -1769,29 +2023,31 @@ final class laramgr: ObservableObject {
         wzGameHUDEnabled = false
         rcrunning = true
         let remoteProcess = sbProc
-        // AX 0x1006fc64c/660 ignores both unhost return values, then
-        // 0x1006fc760 tears down RC.
+        // AX remote cleanup@0x1006fb8c0 serializes this block. The wrapper at
+        // 0x1006ffba8 keeps a failed destroy in its deduplicated pending set.
         wzWorker.async { [weak self, remoteProcess] in
-            let removed = wzhud_unregister_springboard_hosts(remoteProcess)
-            remoteProcess?.destroy()
-            if self?.wzTerminating == true {
-                wzesp_reset()
-                wz_disconnect()
-            }
+            guard let self else { return }
+            let result = self.cleanupRemoteCallsOnWorker(remoteProcess)
             
             DispatchQueue.main.async {
-                self?.rcrunning = false
-                if self?.sbProc === remoteProcess {
-                    self?.rcready = false
-                    self?.sbProc = nil
+                self.rcrunning = false
+                if self.sbProc === remoteProcess {
+                    self.rcready = false
+                    self.sbProc = nil
                 }
-                if !removed {
-                    self?.rcLastError = "远端窗口注销报告失败，已按 AX 顺序销毁会话"
-                    self?.logmsg("(wz.hud) unhost reported failure; AX mode 0 teardown completed")
+                if !result.hostsRemoved {
+                    self.rcLastError = "远端窗口注销报告失败，字段已按 AX 顺序清理"
+                    self.logmsg("(wz.hud) unhost reported failure; fields cleared")
                 }
-                self?.wzGameHUDActive = false
-                wzhud_set_enabled(false)
-                self?.logmsg("远程调用会话已销毁")
+                if result.pendingRemaining != 0 {
+                    self.rcLastError = "RemoteCall cleanup pending: \(result.pendingRemaining)"
+                    self.logmsg("RemoteCall cleanup pending: \(result.pendingRemaining)")
+                }
+                self.wzGameHUDActive = false
+                wzhud_request_termination_sync()
+                self.logmsg(result.currentDestroyed
+                    ? "远程调用会话已销毁"
+                    : "远程调用会话等待重试")
                 completion?()
             }
         }

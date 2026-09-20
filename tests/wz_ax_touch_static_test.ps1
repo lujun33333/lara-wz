@@ -1,8 +1,16 @@
 ﻿$ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $source = Get-Content -LiteralPath (Join-Path $root 'lara/kexploit/wz/WZAXTouch.mm') -Raw -Encoding UTF8
+$bridge = Get-Content -LiteralPath (Join-Path $root 'lara/kexploit/WZHUDBridge.mm') -Raw -Encoding UTF8
+$pending = Get-Content -LiteralPath (Join-Path $root 'lara/kexploit/wz/WZHUDPendingTouchQueue.h') -Raw -Encoding UTF8
 function Require([string]$pattern, [string]$message) {
     if ($source -notmatch $pattern) { throw "FAIL: $message" }
+}
+function Require-Bridge([string]$pattern, [string]$message) {
+    if ($bridge -notmatch $pattern) { throw "FAIL: $message" }
+}
+function Require-Pending([string]$pattern, [string]$message) {
+    if ($pending -notmatch $pattern) { throw "FAIL: $message" }
 }
 # Binary-derived ABI contract: AX128 0x100833308..0x10083331c sets x0..x4.
 Require 'Ref \(\*createVirtual\)\(Ref, CFDictionaryRef, const VirtualCallbacksV2 \*, void \*, void \*\)' 'VirtualService create ABI must have five arguments'
@@ -24,4 +32,26 @@ Require 'tapPending\.compare_exchange_strong' 'Tap submission must not wait sync
 Require 'if \(NSThread\.isMainThread\) readSurface\(\);[\s\S]{0,120}dispatch_sync\(dispatch_get_main_queue\(\), readSurface\)' 'UIScreen surface metrics are read off the main thread'
 Require 'if \(NSThread\.isMainThread\) convert\(\);[\s\S]{0,120}dispatch_sync\(dispatch_get_main_queue\(\), convert\)' 'UIKit coordinate conversion is performed off the main thread'
 if ($source -match 'api\.remoteDispatch\s*\(') { throw 'FAIL: Remote dispatch called in local process' }
-'PASS: AX128 SimTouch ABI, remote dispatch, lifecycle and nonblocking submission contracts'
+Require-Pending 'struct PendingTouchAction[\s\S]{0,280}pointerID[\s\S]{0,160}kind[\s\S]{0,160}expirationTime[\s\S]{0,220}actionBlock' 'Pending touch action does not preserve AX fields'
+Require-Pending 'AtomicGesture = 3' 'AX kind 3 must remain the point-only/timed gesture kind, not physical Cancel'
+Require-Pending 'kExpirationInterval = 0\.75' 'AX 0x10087b06c expiration interval changed'
+Require-Pending 'void reset\(std::uint64_t generation\)[\s\S]{0,180}actions_\.clear\(\)' 'Pending queue reset does not clear work'
+Require-Pending 'action\.kind == Kind::Moved[\s\S]{0,260}actions_\.back\(\)[\s\S]{0,260}tail\.kind == Kind::Moved[\s\S]{0,220}tail\.pointerID == action\.pointerID[\s\S]{0,220}tail = std::move\(action\)' 'AX tail-only same-pointer Move replacement changed'
+Require-Pending 'it->kind == Kind::AtomicGesture[\s\S]{0,180}actions_\.erase\(it\)[\s\S]{0,360}result\.lifecycleDropped = true[\s\S]{0,180}actions_\.clear\(\)' 'AX kind-3 prune / lifecycle batch-clear order changed'
+if ($pending -match 'maxDepth|Kind::Cancelled|activePointers_') { throw 'FAIL: guessed depth/cancel/pointer-state policy returned' }
+Require-Bridge 'dispatch_queue_create\("com\.coldcheat\.simtouch", DISPATCH_QUEUE_SERIAL\)' 'AX pending actions are not confined to the recovered serial queue'
+Require-Bridge 'paths\.firstObject\.pathIdentity' 'AX pathIdentity is not used as pointerID'
+Require-Bridge 'pending_kind\(phase, &kind\)[\s\S]{0,260}fail-closed reset pointer' 'Physical Cancel must fail closed instead of being guessed as AX kind 3'
+Require-Bridge 'PendingTouchAction pending\{[\s\S]{0,180}pointerID[\s\S]{0,180}kind[\s\S]{0,180}expirationTime[\s\S]{0,180}generation' 'HID callback does not create a structured pending action'
+Require-Bridge 'timestamp=CFAbsoluteTimeGetCurrent\(\)[\s\S]{0,240}timestamp \+ wzhud_pending_touch::kExpirationInterval' 'AX CFAbsoluteTime + 0.75 expiration source changed'
+Require-Pending 'canExecute\(const PendingTouchAction &action,[\s\S]{0,520}now < action\.expirationTime[\s\S]{0,240}action\.generation == currentGeneration' 'Execution policy does not recheck expiration and generation'
+Require-Bridge 'popNext\(CFAbsoluteTimeGetCurrent\(\), generation,[\s\S]{0,120}&action, &expiredPointerID\)[\s\S]{0,1200}canExecute\(' 'Expiration is not rechecked before main-thread execution'
+Require-Bridge 'expiredLifecycle[\s\S]{0,700}finish_expired_lifecycle_pointer_main\(pending->pointerID\)[\s\S]{0,300}g_pendingTouchActions\.discardAll\(\)' 'Expired AX lifecycle does not clear the queued batch and retained HUD pointer'
+Require-Bridge 'invalidate_pending_touch_actions_main\(void\)[\s\S]{0,180}g_pendingTouchGeneration\.fetch_add\(1\)[\s\S]{0,500}g_pendingTouchActions\.reset\(generation\)' 'Pending queue invalidation does not advance generation and clear state'
+Require-Bridge 'handle_scene_activity_main\(BOOL active\)[\s\S]{0,180}if \(!active\) invalidate_pending_touch_actions_main\(\)' 'Scene inactivity does not invalidate pending touch work'
+Require-Bridge 'destroy_hud_main\(void\)[\s\S]{0,180}invalidate_pending_touch_actions_main\(\)' 'HUD teardown does not invalidate pending touch work'
+Require-Bridge 'g_localHostingReady\.store\(ready\)[\s\S]{0,220}if \(ready\) \{[\s\S]{0,120}invalidate_pending_touch_actions_main\(\)' 'Local hosting replacement does not invalidate pending touch work'
+Require-Bridge 'g_springBoardHostingInFlight\.store\(false\)[\s\S]{0,180}if \(success\) \{[\s\S]{0,120}invalidate_pending_touch_actions\(\)' 'SpringBoard hosting replacement does not invalidate pending touch work'
+Require-Bridge 'static BOOL unregister_local_hosting_main\(void\) \{[\s\S]{0,360}invalidate_pending_touch_actions_main\(\)' 'Local hosting teardown does not invalidate pending touch work'
+Require-Bridge 'g_springBoardHostingReady\.store\(false\)[\s\S]{0,260}invalidate_pending_touch_actions\(\)[\s\S]{0,160}if \(!hadHosts\)' 'SpringBoard no-host teardown can retain pending touch work'
+'PASS: AX128 SimTouch ABI, binary-derived pending queue, lifecycle and nonblocking submission contracts'

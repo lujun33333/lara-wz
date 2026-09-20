@@ -1,1 +1,0 @@
-void xpf_sptm_txm_init(void);

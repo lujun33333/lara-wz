@@ -1,11 +1,20 @@
 #include <stdint.h>
+#include <stddef.h>
+#include <stdbool.h>
 
+#if defined(XPF_LAYOUT_ONLY)
+typedef struct Fat Fat;
+typedef struct MachO MachO;
+typedef struct PFSection PFSection;
+typedef void *xpc_object_t;
+#else
 #include "Fat.h"
 #include "Util.h"
 #include "PatchFinder.h"
 #include "PatchFinder_arm64.h"
 #include "arm64.h"
 #include <xpc/xpc.h>
+#endif
 
 typedef struct s_XPFItem {
 	struct s_XPFItem *nextItem;
@@ -36,6 +45,18 @@ void xpf_set_error(const char *error, ...);
 const char *xpf_get_error(void);
 void xpf_print_all_items(void);
 void xpf_stop(void);
+
+// AX leaves partial start state in gXPF and makes the caller run xpf_stop().
+// Keep that ownership rule in one inline helper so every consumer performs the
+// same failure cleanup without changing the exported start routine itself.
+static inline int xpf_start_with_kernel_path_cleanup_on_failure(const char *kernelPath)
+{
+    int result = xpf_start_with_kernel_path(kernelPath);
+    if (result != 0) {
+        xpf_stop();
+    }
+    return result;
+}
 
 static inline uint64_t xpf_gett1szboot(void) {
     uint64_t pointer_mask = xpf_item_resolve("kernelConstant.pointer_mask");
@@ -82,34 +103,23 @@ typedef struct s_XPF {
 	PFSection *kernelKmodInfoSection;
 	PFSection *kernelPrelinkInfoSection;
 	PFSection *kernelBootdataInit;
-	PFSection *kernelBootcodeSection;
 	PFSection *kernelAMFITextSection;
 	PFSection *kernelAMFIStringSection;
 	PFSection *kernelSandboxTextSection;
 	PFSection *kernelSandboxStringSection;
-	PFSection *kernelSandboxAuthStubSection;
-	PFSection *kernelIOSurfaceTextSection;
-	PFSection *kernelIOSurfaceStringSection;
-	PFSection *kernelIOSurfaceOsLogSection;
 	PFSection *kernelInfoPlistSection;
-
-	void *decompressedSptm;
-	size_t decompressedSptmSize;
-	Fat *sptmContainer;
-	MachO *sptm;
-	uint64_t sptmBase;
-	PFSection *sptmTextSection;
-	PFSection *sptmStringSection;
-
-	void *decompressedTxm;
-	size_t decompressedTxmSize;
-	Fat *txmContainer;
-	MachO *txm;
-	uint64_t txmBase;
-	PFSection *txmTextSection;
-	PFSection *txmStringSection;
 
 	XPFItem *firstItem;
 	bool ignoreBaseSet;
 } XPF;
+
+#if defined(__cplusplus)
+static_assert(offsetof(XPF, firstItem) == 0x110, "AX 1.2.8 firstItem ABI");
+static_assert(offsetof(XPF, ignoreBaseSet) == 0x118, "AX 1.2.8 ignoreBaseSet ABI");
+static_assert(sizeof(XPF) == 0x120, "AX 1.2.8 XPF size");
+#else
+_Static_assert(offsetof(XPF, firstItem) == 0x110, "AX 1.2.8 firstItem ABI");
+_Static_assert(offsetof(XPF, ignoreBaseSet) == 0x118, "AX 1.2.8 ignoreBaseSet ABI");
+_Static_assert(sizeof(XPF) == 0x120, "AX 1.2.8 XPF size");
+#endif
 extern XPF gXPF;

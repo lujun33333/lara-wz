@@ -30,6 +30,31 @@ Require-Text 'lara/kexploit/wzmem.m' `
 Require-Text 'lara/kexploit/wzmem.m' `
     'WZ_TRANSPORT_MACH_TASK[\s\S]*wz_mach_read_locked\(addr, buffer, size\)' `
     'Mach task 路径未保持直接读取'
+Require-Text 'lara/kexploit/wzmem.m' `
+    'wz_release_mapping[\s\S]*mach_vm_deallocate\(mach_task_self_, sh->localAddress, PAGE_SIZE\)[\s\S]*mach_port_deallocate\(mach_task_self_, \(mach_port_name_t\)sh->port\)' `
+    '全缓存失效没有同时释放0x4000 alias和Mach port'
+Require-Text 'lara/kexploit/wzmem.m' `
+    'void wz_invalidate_read_cache\(void\)[\s\S]*pthread_mutex_lock\(&g_wzMemoryLock\)[\s\S]*for \(struct wzmcache \*c = g_wzCaches; c; c = c->nextCache\)[\s\S]*wz_clear_cache\(c\)[\s\S]*pthread_mutex_unlock\(&g_wzMemoryLock\)' `
+    '缺少不掉连接的全read/mapped alias缓存失效'
+$memory = Read-Source 'lara/kexploit/wzmem.m'
+$invalidateStart = $memory.IndexOf('void wz_invalidate_read_cache(void)')
+$disconnectStart = $memory.IndexOf('void wz_disconnect(void)', $invalidateStart)
+if ($invalidateStart -lt 0 -or $disconnectStart -le $invalidateStart) {
+    throw 'FAIL: 无法提取read cache invalidate函数'
+}
+$invalidate = $memory.Substring($invalidateStart, $disconnectStart - $invalidateStart)
+if ($invalidate -match 'g_wzVmMap\s*=' -or
+    $invalidate -match 'g_wzProc\s*=' -or
+    $invalidate -match 'g_wzMachTask\s*=' -or
+    $invalidate -match 'g_wzTransport\s*=' -or
+    $invalidate -match 'g_wzCapabilities\s*=' -or
+    $invalidate -match 'g_wzPid\s*=' -or
+    $invalidate -match 'g_wzGeneration\s*(?:\+\+|=)') {
+    throw 'FAIL: read cache invalidate错误修改了连接/能力/session generation'
+}
+Require-Text 'lara/kexploit/wz/YuanbaoCollector.mm' `
+    'YuanbaoCollectorResetForTerminalChange[\s\S]*wz_invalidate_read_cache\(\)' `
+    'AX terminal reset没有失效底层read/mapped alias缓存'
 Require-Text 'lara/kexploit/wz/KoiProjection.mm' `
     'kFreshRootIntervalNanoseconds\s*=\s*UINT64_C\(750000000\)' `
     '矩阵根 fresh-read 未按 750ms 限频'

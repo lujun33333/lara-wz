@@ -10,13 +10,13 @@
 |---|---|---|---|
 | 0x10076d234 | configureHostedBackgroundMetalLayer | equivalent | MTKView CAMetalLayer mask18/nextDrawableTimeout:YES |
 | 0x1007723f0 | configureHostedBackgroundLayerHierarchy | implemented | ax_enable_hosted_layer；host/ancestor/window/root layer mask18 |
-| 0x100774430 | initWithFrame: | equivalent | CA command pool、WZAXMetalRenderer/MTKView/queue/pipeline/cache/observer初始化；非原ImGui内部实现 |
+| 0x100774430 | initWithFrame: | equivalent | CA command pool、WZAXMetalRenderer/MTKView/queue、Dear ImGui 1.92.5 WIP context 与官方 Metal backend 初始化；Rajdhani Bold OTF 以 18px+默认 0x20..0xff glyph range 装载；WIP 核心快照固定为 4ab86e1 |
 | 0x100783c60 | didMoveToWindow | equivalent | 窗口安装路径configure_layer_renderer_main及方向同步；需设备检查 |
 | 0x100784384 | mtkView:drawableSizeWillChange: | equivalent | MTK delegate接入；每帧从drawable及逻辑bounds计算NDC |
-| 0x1007864d4 | drawInMTKView: | equivalent | WZAXMetalRenderer drawInMTKView提交真实render encoder/drawable/command buffer |
+| 0x1007864d4 | drawInMTKView: | equivalent | WZAXMetalRenderer 固定 DeltaTime 后执行 ImGui NewFrame/Render，并由 ImGui_ImplMetal_RenderDrawData 提交 render encoder/drawable/command buffer |
 | 0x100786f3c | renderFrameForBackgroundTick | equivalent | render_frame_main+CADisplayLink更新CA；未做设备调度比对 |
-| 0x100788bf8 | bnd4sfh5 | equivalent | 同一command producer；active走Metal，inactive走CA；逐图元栅格纹理非原ImGui三角化 |
-| 0x100793890 | bg6dw1sf | equivalent | 世界框/射线/头像/技能/视野/HP/4组回城弧/固定slot野怪图元已恢复；见下方原语及双后端等价边界 |
+| 0x100788bf8 | bnd4sfh5 | equivalent | active 直接提交固定 snapshot 到 ImDrawList/Metal；inactive 单独走 UIKit/retained CA，不再把 CALayer/CGPath 反向转译到前台 |
+| 0x100793890 | bg6dw1sf | equivalent | 前台从 snapshot 直接生成 Rect、Line、Image、Circle、Text、Arc 七类原语；世界框/射线/头像/技能/视野/HP/4组回城弧/固定slot野怪已接入 |
 | 0x1007c6624 | QsqnWxfaw4:nhs3shtre: | equivalent | WZAXImageCache异步两类缓存、3次>1000字节、5秒失败退避 |
 | 0x1007d1b08 | bny4sq1:nhs3shtre: | equivalent | imageForID:summoner:缓存查询及pending去重 |
 | 0x1007d3070 | nhd32dgreq:heroID:nhs3shtre: | equivalent | 纹理按variant/key存储，清pending/retry |
@@ -67,6 +67,6 @@
 | 0x1007f7204 | .cxx_destruct | equivalent | ARC释放CA/Metal/view/queue/cache；MTKdelegate销毁前置nil |
 | 0x100773e08 | bgh4fdqt | equivalent | 屏幕bounds创建hosted绘制根；原helper非singleton |
 
-双后端等价边界：前台使用相同CA命令池逐图元CoreGraphics栅格纹理后Metal quad提交，不是原ImGui抗锯齿/字形三角化实现。Metal纹理三帧池由GPU completion semaphore保护。回城动画clock使用真实tick delta，适应Lara后台不规则采样；原AX ImGui默认DeltaTime=0.0166666675，Time字段初始0。未进行iOS构建和真机像素比对，equivalent不代表像素完全一致。
+双后端等价边界：前台直接从 `wzesp_item_t` snapshot 生成 Dear ImGui 1.92.5 WIP draw-data，并使用官方 Metal backend（动态 font atlas、ImDrawVert 20 字节、ImDrawIdx 16 位、backend scissor/texture/pipeline/blend）；后台保留独立 UIKit/retained CA 消费。ImGui DeltaTime 固定为 0.01666666753590107，context/动画 Time 从 0 按该步长推进。参考二进制只足以把版本锁到 `1.92.5 WIP` 和 ABI/编译特征；上游 WIP 的精确提交号无法从 Mach-O 唯一定出，因此采用正式 1.92.5 前最后一个改动核心代码的提交 4ab86e1，并以 SHA256 固定所有 vendored 文件。未进行 iOS 构建、真机或像素比对，equivalent 不代表像素完全一致。
 
 野怪消费补证：0x1007ab460 对 slot 清低位，0x1007ab464/484/4a0 比较 18/16；19、20 条模拟记录均仅生成前16槽位图元。0/8蓝、4/12红，其余白；特殊点半径 mapsize/51+1，其余 mapsize/51。record+4 非0时改为 snprintf("%d")，0/4/8/12黄字、其余白字（0x1007acab4 固定黄色；0x1007ad314 使用分支颜色参数）。对 1、999、1000、-1 均观察到文字分支，无旧1..999门禁。文字位置为 minimap-(mapsize/52,mapsize/52)，字号 mapsize/26*1.9。实验仅桩化生产端刷新与外部UIKit调用，原绘制消费逻辑在Unicorn执行；不能代替真机绘制验证。

@@ -113,4 +113,24 @@ int main() {
     assert(discoveries == 1);
     auxiliary.Poll(40166666668, readTable, discover);
     assert(discoveries == 2 && auxiliary.valid);
+
+    AuxiliaryTable missing;
+    uint32_t missingDiscoveries = 0;
+    auto missingDiscover = [&] {
+        ++missingDiscoveries;
+        return uintptr_t(0);
+    };
+    missing.Poll(0, readTable, missingDiscover);
+    missing.Poll(20000000000, readTable, missingDiscover);
+    assert(missingDiscoveries == 1 && missing.attempts == 1);
+    assert(!missing.exhausted &&
+           missing.nextDiscovery == UINT64_C(40000000000));
+    missing.Poll(39999999999, readTable, missingDiscover);
+    assert(missingDiscoveries == 1 && !missing.exhausted);
+    missing.Poll(40000000000, readTable, missingDiscover);
+    // 0x100810e48 increments the attempt counter; 0x100810f00 compares the
+    // old value with zero. Only the second failed discovery reaches f30 and
+    // enables the direct-timer fallback.
+    assert(missingDiscoveries == 2 && missing.attempts == 2);
+    assert(missing.exhausted);
 }

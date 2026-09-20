@@ -6,60 +6,15 @@
 #include <mach/machine.h>
 #include "xpf.h"
 #include "decompress.h"
-#include "im4p_direct.h"
 
 #include "ppl.h"
 #include "non_ppl.h"
-#include "sptm_txm.h"
 #include "common.h"
 #include "bad_recovery.h"
-
-#include <libvfs/vfs.h>
 
 bool xpf_supported_always(void)
 {
 	return true;
-}
-
-bool xpf_supported_sptm(void)
-{
-	return (bool)gXPF.sptm;
-}
-
-bool xpf_supported_sptm_18_3_down(void)
-{
-	return (bool)gXPF.sptm && strcmp(gXPF.darwinVersion, "24.3.0") <= 0;
-}
-
-bool xpf_supported_sptm_18_4_to_26_x(void)
-{
-	return (bool)gXPF.sptm && strcmp(gXPF.darwinVersion, "24.4.0") >= 0 && strcmp(gXPF.darwinVersion, "27.0.0") < 0;
-}
-
-bool xpf_supported_18_down_incl_26b1(void)
-{
-	if (!strcmp(gXPF.xnuBuild, "12377.0.81.0.3~311")) {
-		return true;
-	}
-	return strcmp(gXPF.darwinVersion, "25.0.0") < 0;
-}
-
-bool xpf_supported_26_up_excl_26b1(void)
-{
-	if (!strcmp(gXPF.xnuBuild, "12377.0.81.0.3~311")) {
-		return false;
-	}
-	return strcmp(gXPF.darwinVersion, "25.0.0") >= 0;
-}
-
-bool xpf_supported_sptm_27_0_up(void)
-{
-	return (bool)gXPF.sptm && strcmp(gXPF.darwinVersion, "27.0.0") >= 0;
-}
-
-bool xpf_supported_non_sptm(void)
-{
-	return !xpf_supported_sptm();
 }
 
 // iOS 15 and above
@@ -92,16 +47,6 @@ bool xpf_supported_1516(void)
 	return xpf_supported_15up() && xpf_supported_16down();
 }
 
-bool xpf_supported_16up_sptm(void)
-{
-	return xpf_supported_16up() && xpf_supported_sptm();
-}
-
-bool xpf_supported_16up_no_sptm(void)
-{
-	return xpf_supported_16up() && xpf_supported_non_sptm();
-}
-
 bool xpf_supported_arm64(void)
 {
 	return !gXPF.kernelIsArm64e;
@@ -114,7 +59,7 @@ bool xpf_arm64_kcall_supported(void)
 
 bool xpf_trigon_supported(void)
 {
-	return gXPF.kernelIsArm64e && xpf_supported_15up() && xpf_supported_16down();
+	return gXPF.kernelIsArm64e && xpf_supported_15up();
 }
 
 XPFSet gBaseSet = {
@@ -131,7 +76,7 @@ XPFSet gBaseSet = {
 
 XPFSet gTranslationSet = {
 	.name="translation",
-	.supported=xpf_supported_non_sptm,
+	.supported=xpf_supported_always,
 	.metrics={
 		"kernelSymbol.cpu_ttep",
 		"kernelSymbol.gVirtBase",
@@ -145,25 +90,9 @@ XPFSet gTranslationSet = {
 	}
 };
 
-XPFSet gTranslationSPTMSet = {
-	.name="translation",
-	.supported=xpf_supported_sptm,
-	.metrics={
-		"kernelSymbol.SPTMArgs",
-		"kernelSymbol.cpu_ttep",
-		"kernelSymbol.gVirtBase",
-		"kernelSymbol.gPhysBase",
-		"kernelSymbol.gPhysSize",
-		"kernelConstant.pointer_mask",
-		"kernelConstant.T1SZ_BOOT",
-		"kernelConstant.ARM_TT_L1_INDEX_MASK",
-		NULL
-	}
-};
-
 XPFSet gPhysmapSet = {
 	.name="physmap",
-	.supported=xpf_supported_non_sptm,
+	.supported=xpf_supported_always,
 	.metrics={
 		"kernelSymbol.vm_page_array_beginning_addr",
 		"kernelSymbol.vm_page_array_ending_addr",
@@ -180,88 +109,12 @@ XPFSet gPhysmapSet = {
 	}
 };
 
-XPFSet gPhysmapSPTMSet_18_3_Down = {
-	.name="physmap",
-	.supported=xpf_supported_sptm_18_3_down,
-	.metrics={
-		"kernelSymbol.vm_page_array_beginning_addr",
-		"kernelSymbol.vm_page_array_ending_addr",
-		"kernelSymbol.vm_first_phys_ppnum",
-		"kernelSymbol.vm_first_phys",
-		"kernelSymbol.vm_last_phys",
-		"kernelSymbol.pp_attr_table",
-		"kernelSymbol.pv_head_table",
-		"kernelSymbol.libsptm_papt_ranges",
-		"kernelSymbol.libsptm_n_papt_ranges",
-		"kernelSymbol.papt_ranges_compressed",
-		"kernelSymbol.n_papt_ranges_compressed",
-		"kernelSymbol.libsptm_frame_table",
-		NULL
-	}
-};
-
-XPFSet gPhysmapSPTMSet_18_4_Up = {
-	.name="physmap",
-	.supported=xpf_supported_sptm_18_4_to_26_x,
-	.metrics={
-		"kernelSymbol.vm_page_array_beginning_addr",
-		"kernelSymbol.vm_page_array_ending_addr",
-		"kernelSymbol.vm_first_phys_ppnum",
-		"kernelSymbol.vm_first_phys",
-		"kernelSymbol.vm_last_phys",
-		"kernelSymbol.pp_attr_table",
-		"kernelSymbol.pv_head_table",
-		"kernelSymbol.libsptm_papt_ranges",
-		"kernelSymbol.libsptm_n_papt_ranges",
-		"kernelSymbol.papt_ranges_compressed",
-		"kernelSymbol.n_papt_ranges_compressed",
-		"kernelSymbol.libsptm_frame_table",
-		"kernelSymbol.libsptm_frame_type_params",
-		"kernelStruct.sptm_frame_type_descriptor.struct_size",
-		NULL
-	}
-};
-
-XPFSet gPhysmapSPTMSet_27_0_Up = {
-	.name="physmap",
-	.supported=xpf_supported_sptm_27_0_up,
-	.metrics={
-		"kernelSymbol.vm_page_array_beginning_addr",
-		"kernelSymbol.vm_page_array_ending_addr",
-		"kernelSymbol.vm_first_phys_ppnum",
-		"kernelSymbol.vm_first_phys",
-		"kernelSymbol.vm_last_phys",
-		"kernelSymbol.libsptm_papt_ranges",
-		"kernelSymbol.libsptm_n_papt_ranges",
-		"kernelSymbol.papt_ranges_compressed",
-		"kernelSymbol.n_papt_ranges_compressed",
-		"kernelSymbol.libsptm_frame_table",
-		"kernelSymbol.libsptm_frame_type_params",
-		"kernelStruct.sptm_frame_type_descriptor.struct_size",
-		"kernelSymbol.pmap_first_pnum",
-		"kernelSymbol.vm_pages_radix_root",
-		NULL
-	}
-};
-
-XPFSet gStructSet_18Down = {
+XPFSet gStructSet = {
 	.name="struct",
-	.supported=xpf_supported_18_down_incl_26b1,
+	.supported=xpf_supported_always,
 	.metrics={
 		"kernelStruct.proc.struct_size",
 		"kernelStruct.task.itk_space",
-		"kernelStruct.vm_map.pmap",
-		NULL
-	}
-};
-
-XPFSet gStructSet_26Up = {
-	.name="struct",
-	.supported=xpf_supported_26_up_excl_26b1,
-	.metrics={
-		"kernelStruct.proc.struct_size",
-		"kernelStruct.task.itk_space",
-		"kernelStruct.task.security_config", // The field in this that Dopamine needs was only introduced in 26.0b2
 		"kernelStruct.vm_map.pmap",
 		NULL
 	}
@@ -278,18 +131,9 @@ XPFSet gTrustcache15Set = {
 
 XPFSet gTrustcache16Set = {
 	.name="trustcache",
-	xpf_supported_16up_no_sptm,
+	xpf_supported_16up,
 	.metrics={
 		"kernelSymbol.ppl_trust_cache_rt",
-		NULL
-	}
-};
-
-XPFSet gTrustcacheSPTMSet = {
-	.name="trustcache",
-	xpf_supported_16up_sptm,
-	.metrics={
-		"kernelSymbol.txm_trustcache_root",
 		NULL
 	}
 };
@@ -351,18 +195,9 @@ XPFSet gPerfKRWSet = {
 
 XPFSet gDevModeSet = {
 	.name="devmode",
-	.supported=xpf_supported_16up_no_sptm,
+	.supported=xpf_supported_16up,
 	.metrics={
 		"kernelSymbol.developer_mode_enabled",
-		NULL
-	},
-};
-
-XPFSet gDevModeSPTMSet = {
-	.name="devmode",
-	.supported=xpf_supported_16up_sptm,
-	.metrics={
-		"kernelSymbol.txm_developer_mode_storage",
 		NULL
 	},
 };
@@ -390,38 +225,20 @@ XPFSet gTrigonSet = {
 	}
 };
 
-XPFSet gIOSurfaceSet = {
-	.name="IOSurface",
-	.supported=xpf_supported_always,
-	.metrics={
-		"kernelStruct.IOSurface.ranges",
-		"kernelStruct.IOSurface.rangeCount",
-		NULL
-	}
-};
-
 XPFSet *gSets[] = {
 	&gBaseSet,
 	&gTranslationSet,
-	&gTranslationSPTMSet,
 	&gSandboxSet,
 	&gPhysmapSet,
-	&gPhysmapSPTMSet_18_3_Down,
-	&gPhysmapSPTMSet_18_4_Up,
-	&gPhysmapSPTMSet_27_0_Up,
-	&gStructSet_18Down,
-	&gStructSet_26Up,
+	&gStructSet,
 	&gTrustcache15Set,
 	&gTrustcache16Set,
-	&gTrustcacheSPTMSet,
 	&gBadRecoverySet,
 	&gPhysRWSet,
 	&gPerfKRWSet,
 	&gDevModeSet,
-	&gDevModeSPTMSet,
 	&gArm64KcallSet,
 	&gTrigonSet,
-	&gIOSurfaceSet,
 };
 
 XPF gXPF = { 0 };
@@ -436,103 +253,8 @@ PFSection *xpf_pfsec_init(const char *filesetEntryId, const char *segName, const
 	return section;
 }
 
-PFSection *xpf_sptm_pfsec_init(const char *segName, const char *sectName)
-{
-	if (!gXPF.sptm) return NULL;
-
-	PFSection *section = pfsec_init_from_macho(gXPF.sptm, NULL, segName, sectName);
-	if (section) {
-		pfsec_set_cached(section, true);
-		pfsec_set_pointer_decoder(section, xpfsec_decode_pointer);
-	}
-	return section;
-}
-
-PFSection *xpf_txm_pfsec_init(const char *segName, const char *sectName)
-{
-	if (!gXPF.txm) return NULL;
-
-	PFSection *section = pfsec_init_from_macho(gXPF.txm, NULL, segName, sectName);
-	if (section) {
-		pfsec_set_cached(section, true);
-		pfsec_set_pointer_decoder(section, xpfsec_decode_pointer);
-	}
-	return section;
-}
-
-int xpf_load_img4(const char *path, void **outBuf, size_t *outSize)
-{
-	if (!path || !outBuf || !outSize) {
-		return -1;
-	}
-
-	// Direct IM4P reader first. img4lib's IM4P path refuses the SPTM/TXM
-	// containers Apple ships with iOS 26 without leaving a diagnostic behind,
-	// and its failure path was observed on device to leave the caller's heap
-	// damaged: with img4lib running first, the path string handed in here came
-	// back as garbage ("[e] im4p_direct: cannot open xM") by the time the reader
-	// looked at it. The direct reader yields the same Mach-O image -- measured
-	// against Apple's own containers: SPTM 1048608 bytes, TXM 458784 bytes --
-	// and validates the magic before handing it to XPF.
-	if (xpf_load_img4_direct(path, outBuf, outSize) == 0) {
-		return 0;
-	}
-
-	// img4lib stays as the second attempt, for containers the direct reader
-	// does not recognise.
-	FHANDLE fd = img4_reopen(file_open(path, O_RDONLY), NULL, 0);
-	if (!fd) {
-		xpf_img4_diag_append("img4lib=open-or-reopen-failed");
-		return -1;
-	}
-
-	unsigned char *buf = 0;
-	size_t sz = 0;
-	int r = fd->ioctl(fd, IOCTL_MEM_GET_DATAPTR, &buf, &sz);
-	// SPTM and TXM are Mach-O images; anything else is not a decoded image.
-	if (r == 0 && ax_is_macho(buf, sz)) {
-		*outSize = sz;
-		*outBuf = malloc(sz);
-		memcpy(*outBuf, buf, sz);
-	}
-	else {
-		char note[96];
-		snprintf(note, sizeof(note), "img4lib=ioctl%d-notmacho(%zu)", r, sz);
-		xpf_img4_diag_append(note);
-		r = -1;
-	}
-
-	fd->close(fd);
-	return r;
-}
-
-// Plain byte copy: no libc call and no variadic argument, so this cannot fault
-// on the arguments the way the fortify-wrapped snprintf did on device
-// (si_addr 0xfffffffffffffff0 with the return address inside this very copy).
-static void xpf_copy_path(char *dst, size_t cap, const char *src)
-{
-	if (!dst || cap == 0) {
-		return;
-	}
-	size_t i = 0;
-	if (src) {
-		for (; i + 1 < cap && src[i]; i++) {
-			dst[i] = src[i];
-		}
-	}
-	dst[i] = '\0';
-}
-
 int xpf_start_with_kernel_path(const char *kernelPath)
 {
-	// AX 1.2.8 exposes a single-argument entry point. Keep the exported ABI in
-	// lockstep with Lara's declaration and callers so x1/x2 can never be
-	// interpreted as optional image paths.
-	static char kernelPathCopy[XPF_PATH_MAX];
-	if (kernelPath) {
-		xpf_copy_path(kernelPathCopy, sizeof(kernelPathCopy), kernelPath);
-		kernelPath = kernelPathCopy;
-	}
 	gXPF.kernelFd = open(kernelPath, O_RDONLY);
 	if (gXPF.kernelFd < 0) {
 		xpf_set_error("Failed to open kernelcache");
@@ -594,17 +316,12 @@ int xpf_start_with_kernel_path(const char *kernelPath)
 	gXPF.kernelDataSection = xpf_pfsec_init("com.apple.kernel", "__DATA", "__data");
 	gXPF.kernelOSLogSection = xpf_pfsec_init("com.apple.kernel", "__TEXT", "__os_log");
 	gXPF.kernelBootdataInit = xpf_pfsec_init("com.apple.kernel", "__BOOTDATA", "__init");
-	gXPF.kernelBootcodeSection = xpf_pfsec_init("com.apple.kernel", "__TEXT_BOOT_EXEC", "__bootcode");
 
 	if (gXPF.kernelIsFileset) {
 		gXPF.kernelAMFITextSection = xpf_pfsec_init("com.apple.driver.AppleMobileFileIntegrity", "__TEXT_EXEC", "__text");
 		gXPF.kernelAMFIStringSection = xpf_pfsec_init("com.apple.driver.AppleMobileFileIntegrity", "__TEXT", "__cstring");
 		gXPF.kernelSandboxTextSection = xpf_pfsec_init("com.apple.security.sandbox", "__TEXT_EXEC", "__text");
-		gXPF.kernelSandboxAuthStubSection = xpf_pfsec_init("com.apple.security.sandbox", "__TEXT_EXEC", "__auth_stubs");
 		gXPF.kernelSandboxStringSection = xpf_pfsec_init("com.apple.security.sandbox", "__TEXT", "__cstring");
-		gXPF.kernelIOSurfaceTextSection = xpf_pfsec_init("com.apple.iokit.IOSurface", "__TEXT_EXEC", "__text");
-		gXPF.kernelIOSurfaceStringSection = xpf_pfsec_init("com.apple.iokit.IOSurface", "__TEXT", "__cstring");
-		gXPF.kernelIOSurfaceOsLogSection = xpf_pfsec_init("com.apple.iokit.IOSurface", "__TEXT", "__os_log");
 		gXPF.kernelInfoPlistSection = xpf_pfsec_init("com.apple.security.AppleImage4", "__TEXT", "__info_plist");
 	}
 	else {
@@ -686,10 +403,8 @@ int xpf_start_with_kernel_path(const char *kernelPath)
 		}
 	}
 
-
 	xpf_ppl_init();
 	xpf_non_ppl_init();
-	xpf_sptm_txm_init();
 	xpf_common_init();
 	xpf_bad_recovery_init();
 
@@ -750,7 +465,7 @@ uint64_t xpfsec_decode_pointer(PFSection *section, uint64_t vmaddr, uint64_t val
 	if ((value & 0xffff000000000000) != 0xffff000000000000) {
 		// Chained fixups, other stuff
 		value &= 0x00000000ffffffff;
-		value += macho_get_base_address(section->macho);
+		value += gXPF.kernelBase;
 	}
 	return value;
 }

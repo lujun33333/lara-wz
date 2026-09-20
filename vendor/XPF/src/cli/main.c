@@ -7,7 +7,7 @@ int main(int argc, char *argv[]) {
 
 	}
 	else {
-		if (xpf_start_with_kernel_path(argv[1]) == 0) {
+		if (xpf_start_with_kernel_path_cleanup_on_failure(argv[1]) == 0) {
 			printf("Starting XPF with %s (%s)\n", argv[1], gXPF.kernelVersionString);
 			clock_t t = clock();
 
@@ -21,8 +21,6 @@ int main(int argc, char *argv[]) {
 				"physmap",
 				"struct",
 				"physrw",
-				"IOSurface",
-				NULL,
 				NULL,
 				NULL,
 				NULL,

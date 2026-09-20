@@ -5,9 +5,15 @@ on:
     branches: [ main ]
   pull_request:
   workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish the verified artifact to the nightly release
+        required: true
+        default: false
+        type: boolean
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build:
@@ -38,44 +44,68 @@ jobs:
       - name: summary
         if: always()
         run: |
-          IPA=$(find . -maxdepth 1 -name 'lara-wz-*.ipa' -print -quit)
-          if [ -n "$IPA" ]; then
-            echo "### lara-wz 王者只读绘制出包成功" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "| 项 | 值 |" >> $GITHUB_STEP_SUMMARY
-            echo "|---|---|" >> $GITHUB_STEP_SUMMARY
-            echo "| 文件 | $IPA |" >> $GITHUB_STEP_SUMMARY
-            echo "| 大小 | $(wc -c < "$IPA" | tr -d ' ') 字节 |" >> $GITHUB_STEP_SUMMARY
-            echo "| sha256 | $(shasum -a 256 "$IPA" | awk '{print $1}') |" >> $GITHUB_STEP_SUMMARY
+          IPA_LIST=$(find . -maxdepth 1 -name 'AX-Pro-1.2.8-*.ipa' -print | sort)
+          if [ -n "$IPA_LIST" ]; then
+            IPA_COUNT=$(printf '%s\n' "$IPA_LIST" | wc -l | tr -d ' ')
           else
-            echo "### 出包失败，看 build/xcodebuild-wz.log" >> $GITHUB_STEP_SUMMARY
+            IPA_COUNT=0
+          fi
+          if [ "$IPA_COUNT" -ne 1 ]; then
+            printf '### AX Pro 1.2.8 build failed\n\nExpected exactly one AX-Pro-1.2.8-*.ipa; found %s. See build/xcodebuild-wz.log.\n' \
+              "$IPA_COUNT" >> "$GITHUB_STEP_SUMMARY"
+            exit 1
           fi
 
-      - name: upload artifact (PR only)
-        if: github.event_name == 'pull_request'
+          IPA="$IPA_LIST"
+          STEM="${IPA#./}"
+          STEM="${STEM%.ipa}"
+          JSON="$STEM.json"
+          SOURCES="$STEM.sources.jsonl"
+          CHECKSUMS="$STEM.sha256"
+          LOG="build/xcodebuild-wz.log"
+          for FILE in "$JSON" "$SOURCES" "$CHECKSUMS" "$LOG"; do
+            if [ ! -f "$FILE" ]; then
+              printf '### AX Pro 1.2.8 artifact incomplete\n\nMissing `%s`.\n' \
+                "$FILE" >> "$GITHUB_STEP_SUMMARY"
+              exit 1
+            fi
+          done
+          shasum -a 256 -c "$CHECKSUMS"
+
+          SOURCE_STATE=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["sourceState"])' "$JSON")
+          SOURCE_COMMIT=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["sourceCommit"])' "$JSON")
+          SOURCE_TREE=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["sourceTree"])' "$JSON")
+          SOURCE_FINGERPRINT=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["sourceFingerprint"])' "$JSON")
+          {
+            printf '### AX Pro 1.2.8 build succeeded\n\n'
+            printf '| Item | Value |\n|---|---|\n'
+            printf '| IPA | `%s` |\n' "$IPA"
+            printf '| Size | %s bytes |\n' "$(wc -c < "$IPA" | tr -d ' ')"
+            printf '| SHA-256 | `%s` |\n' "$(shasum -a 256 "$IPA" | awk '{print $1}')"
+            printf '| Source state | `%s` |\n' "$SOURCE_STATE"
+            printf '| Commit | `%s` |\n' "$SOURCE_COMMIT"
+            printf '| Tree | `%s` |\n' "$SOURCE_TREE"
+            printf '| Source fingerprint | `%s` |\n' "$SOURCE_FINGERPRINT"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: upload verified build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: lara-ipa
+          name: ax-pro-1.2.8-build-${{ github.sha }}
+          if-no-files-found: error
           path: |
-            lara-wz-*.ipa
-            lara-wz-*.json
+            AX-Pro-1.2.8-*.ipa
+            AX-Pro-1.2.8-*.json
+            AX-Pro-1.2.8-*.sources.jsonl
+            AX-Pro-1.2.8-*.sha256
             build/xcodebuild-wz.log
-
-      - name: upload release ipa
-        if: github.event_name != 'pull_request'
-        uses: actions/upload-artifact@v4
-        with:
-          name: release-ipa
-          path: |
-            lara-wz-*.ipa
-            lara-wz-*.json
-            build/xcodebuild-wz.log
-
 
   release:
-    if: github.event_name != 'pull_request'
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish == true }}
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
       - name: checkout
@@ -83,32 +113,33 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: download ipa
+      - name: download verified build artifact
         uses: actions/download-artifact@v4
         with:
-          name: release-ipa
+          name: ax-pro-1.2.8-build-${{ github.sha }}
           path: build/
 
-      - name: get last 12h commits
+      - name: verify downloaded build artifact
         run: |
-          COMMITS=$(git log --since="12 hours ago" --pretty=format:"- %h %s (%an)")
-          if [ -z "$COMMITS" ]; then
-            COMMITS="no commits in the last 12 hours"
+          cd build
+          CHECKSUMS=(AX-Pro-1.2.8-*.sha256)
+          if [ "${#CHECKSUMS[@]}" -ne 1 ] || [ ! -f "${CHECKSUMS[0]}" ]; then
+            echo "expected exactly one AX Pro 1.2.8 checksum manifest" >&2
+            exit 1
           fi
-
-          echo "COMMITS<<EOF" >> $GITHUB_ENV
-          echo "$COMMITS" >> $GITHUB_ENV
-          echo "EOF" >> $GITHUB_ENV
+          shasum -a 256 -c "${CHECKSUMS[0]}"
 
       - name: write release notes
         run: |
-          cat <<EOF > release_notes.txt
-          lara nightly build
-          
-          Last 12 hours commits:
-          
-          ${COMMITS}
-          EOF
+          COMMITS=$(git log --since="12 hours ago" --pretty=format:"- %h %s (%an)")
+          {
+            printf 'AX Pro 1.2.8 nightly build\n\nLast 12 hours commits:\n\n'
+            if [ -n "$COMMITS" ]; then
+              printf '%s\n' "$COMMITS"
+            else
+              printf 'no commits in the last 12 hours\n'
+            fi
+          } > release_notes.txt
 
       - name: update nightly release
         env:
@@ -125,4 +156,9 @@ jobs:
             --notes-file release_notes.txt \
             --prerelease
       
-          gh release upload nightly build/lara-wz-*.ipa build/lara-wz-*.json --clobber
+          gh release upload nightly \
+            build/AX-Pro-1.2.8-*.ipa \
+            build/AX-Pro-1.2.8-*.json \
+            build/AX-Pro-1.2.8-*.sources.jsonl \
+            build/AX-Pro-1.2.8-*.sha256 \
+            --clobber

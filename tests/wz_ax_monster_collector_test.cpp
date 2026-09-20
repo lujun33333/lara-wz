@@ -36,6 +36,18 @@ int main() {
     input.minimapOriginX = 50; input.minimapOriginY = 204;
     KoiProjectionState projection{}; KoiProjectionReset(&projection);
     KoiRuntimeDiagnostics diagnostics{}; KoiEntity entities[19]{};
+    YuanbaoCollectorReadersStart(1);
+    gAXAuxiliaryUnityBase = unity;
+    // AX 0x100805938..0x100805958 aborts the frame when the matrix read or
+    // zero-probe check fails; it does not continue under a fabricated camp.
+    assert(YuanbaoCollectorGather(unity, &input, entities, 19,
+                                  &projection, &diagnostics) == 0);
+    projection.valid = 1;
+    projection.matrix[0] = 1.0f;
+    projection.matrix[10] = 1.0f;
+    projection.screenWidth = 1000.0f;
+    projection.screenHeight = 500.0f;
+    projection.campOrientation = 1.0f;
     assert(YuanbaoCollectorGather(unity, &input, entities, 19, &projection, &diagnostics) == 19);
     for (int i = 0; i < 19; ++i) assert(entities[i].axMonsterSlot == i);
     assert(entities[4].worldX == 10.8f && entities[4].worldZ == -2.0f);
@@ -53,4 +65,5 @@ int main() {
     std::memcpy(gAXAuxiliaryTable.bytes.data() + 0x110 + 4 * 12, &timer, 4);
     assert(YuanbaoCollectorGather(unity, &input, entities, 19, &projection, &diagnostics) == 19);
     assert(entities[4].monsterRespawnSeconds == 5);
+    YuanbaoCollectorReadersStop(2);
 }
