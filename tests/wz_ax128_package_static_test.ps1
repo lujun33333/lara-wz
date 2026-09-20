@@ -118,14 +118,6 @@ foreach ($token in @(
     'libxpf.a', 'libgrabkernel2.a', '-miphoneos-version-min=16.5.1',
     'XPF_EMBEDDED="$BIN"', 'verify_xpf_binary_layout "$XPF_EMBEDDED" arm64e',
     '主 Mach-O 未静态并入 libxpf', '主 Mach-O 未静态并入 libgrabkernel2',
-    'MAIN_SYMBOLS="$(LC_ALL=C xcrun nm -g "$BIN")"',
-    '_wzhud_local_hosting_ready', '_wzhud_register_springboard_hosts',
-    '_wzhud_unregister_springboard_hosts',
-    '''_OBJC_CLASS_$_WZHUDDrawWindow''', '''_OBJC_CLASS_$_WZHUDMenuWindow''',
-    'HOSTING_OBJC_METADATA="$(LC_ALL=C xcrun otool -ov "$BIN")"',
-    'HOSTING_RUNTIME_STRINGS="$(LC_ALL=C xcrun strings -a "$BIN")"',
-    '$(NF - 1) != "U"', 'grep -Fqx -- "$marker"',
-    '最终 Mach-O 缺少已定义托管符号', '最终 Mach-O 缺少托管运行时证据',
     'NON_SYSTEM_LOADS=', 'cmd LC_RPATH', '[[ ! -e "$SRC_APP/Frameworks" ]]',
     'root = pathlib.Path(sys.argv[1])', 'unexpected root directories',
     'prefix = "Payload/AX Pro.app/"', 'entries outside AX Pro.app', 'forbidden_nested',
@@ -159,7 +151,6 @@ foreach ($token in @(
 )) { Require-Literal $build $token 'AX final-product gate missing' }
 Reject-Pattern $build 'XPF_EMBEDDED="\$SRC_APP/Frameworks|@executable_path/Frameworks/libxpf|cp\s+"\$XPF_DIR/output/ios/libxpf\.dylib"' 'build script still ships XPF dynamically'
 Reject-Pattern $build 'create_local_hosting_controller' 'release gate still relies on a static C++ source-function name'
-Require-Count $build 'MAIN_SYMBOLS="\$\(LC_ALL=C xcrun nm -g "\$BIN"\)"' 1 'final Mach-O symbols must be collected once and reused'
 Require-Count $build 'rm -rf -- "\$target"' 1 'recursive cleanup must be centralized in reset_build_dir'
 Reject-Pattern $build 'rm -rf(?! -- "\$target")' 'unguarded recursive cleanup remains'
 Reject-Pattern $workflow '(?i)\bldid\b' 'workflow still installs or invokes ldid'

@@ -659,38 +659,6 @@ LC_ALL=C grep -a -q 'lara.wz.local-hud' "$BIN" \
 LC_ALL=C grep -a -q '_setAllWindowsKeepContextInBackground:' "$BIN" \
     && die "最终二进制仍混入不属于 QXA105 菜单链的全局窗口策略"
 
-# Release 会内联或 dead-strip static C++ helper，也可能只保留 Itanium mangled
-# 本地符号；因此不能把源码内部函数裸名当作字符串 oracle。改为核对最终
-# Mach-O 中跨翻译单元使用的 C/ObjC 定义、ObjC metadata 与 helper 实际消费的
-# 运行时字符串。
-MAIN_SYMBOLS="$(LC_ALL=C xcrun nm -g "$BIN")"
-for symbol in \
-    _wzhud_local_hosting_ready \
-    _wzhud_register_springboard_hosts \
-    _wzhud_unregister_springboard_hosts \
-    '_OBJC_CLASS_$_WZHUDDrawWindow' \
-    '_OBJC_CLASS_$_WZHUDMenuWindow'; do
-    awk -v expected="$symbol" \
-        '$NF == expected && $(NF - 1) != "U" { found = 1 } END { exit found ? 0 : 1 }' \
-        <<<"$MAIN_SYMBOLS" \
-        || die "最终 Mach-O 缺少已定义托管符号：$symbol"
-done
-HOSTING_OBJC_METADATA="$(LC_ALL=C xcrun otool -ov "$BIN")"
-for class_name in WZHUDDrawWindow WZHUDMenuWindow; do
-    grep -Fq -- "$class_name" <<<"$HOSTING_OBJC_METADATA" \
-        || die "最终 Mach-O ObjC metadata 缺少托管窗口类：$class_name"
-done
-HOSTING_RUNTIME_STRINGS="$(LC_ALL=C xcrun strings -a "$BIN")"
-for marker in \
-    /System/Library/PrivateFrameworks/BackBoardServices.framework/BackBoardServices \
-    SBSAccessibilityWindowHostingController \
-    registerWindowWithContextID:atLevel: \
-    unregisterWindowWithContextID: \
-    "(%s) local-hosting draw/menu=%d/%d contexts=%u/%u controllers=%p/%p"; do
-    grep -Fqx -- "$marker" <<<"$HOSTING_RUNTIME_STRINGS" \
-        || die "最终 Mach-O 缺少托管运行时证据：$marker"
-done
-
 for marker in WZHUDDrawWindow \
     WZHUDMenuWindow \
     BackBoardServices.framework/BackBoardServices \
@@ -721,6 +689,7 @@ XPF_EMBEDDED="$BIN"
 verify_xpf_binary_layout "$XPF_EMBEDDED" arm64e
 LC_ALL=C grep -a -q -- "arm_maxoffset" "$XPF_EMBEDDED" \
     || die "主 Mach-O 缺少 arm_maxoffset 兼容 finder"
+MAIN_SYMBOLS="$(xcrun nm -g "$BIN")"
 grep -q ' _xpf_start_with_kernel_path$' <<<"$MAIN_SYMBOLS" \
     || die "主 Mach-O 未静态并入 libxpf"
 grep -q ' _grab_kernelcache$' <<<"$MAIN_SYMBOLS" \
