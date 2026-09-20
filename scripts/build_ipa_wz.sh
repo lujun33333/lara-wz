@@ -190,6 +190,15 @@ LC_ALL=C grep -a -q -- "arm_maxoffset" "$XPF_EMBEDDED" \
 [[ "$(shasum -a 256 "$XPF_EMBEDDED" | awk '{print $1}')" == \
    "$(shasum -a 256 "$ROOT/lara/lib/libxpf.dylib" | awk '{print $1}')" ]] \
     || die "内嵌 libxpf.dylib 与源码重建产物不一致"
+
+# install name 必须让 dyld 找到 Frameworks/ 下的那份。
+# 上游 XPF 的 Makefile 默认 -install_name @loader_path/libxpf.dylib；对主可执行文件
+# 而言 @loader_path 是 lara.app/，会去找不存在的 lara.app/libxpf.dylib，
+# 结果就是「打开即闪退，dyld: Library not loaded」。
+LC_ALL=C grep -a -q -- "@loader_path/libxpf.dylib" "$BIN" \
+    && die "主二进制以 @loader_path 引用 libxpf，运行时会解析到 lara.app/ 而非 Frameworks/"
+LC_ALL=C grep -a -q -- "@executable_path/Frameworks/libxpf.dylib" "$BIN" \
+    || die "主二进制未以 @executable_path/Frameworks/libxpf.dylib 引用 libxpf"
 [[ -f "$SRC_APP/Rajdhani Bold.otf" ]] \
     || die "最终 App 未包含 AX Rajdhani 字体"
 [[ "$(shasum -a 256 "$SRC_APP/Rajdhani Bold.otf" | awk '{print $1}')" == \
