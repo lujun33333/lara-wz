@@ -68,6 +68,7 @@ for token in (
     'CHECKSUM_MANIFEST="$ROOT/$PACKAGE_STEM.sha256"',
     '"sourceManifestSha256": "$SOURCE_MANIFEST_SHA256"',
     'shasum -a 256 -c "${CHECKSUM_MANIFEST##*/}"',
+    "LDID=/usr/bin/true",
 ):
     assert token in script, token
 assert not re.search(r"(?m)^FINGERPRINT=\$\(shasum -a 256", script)
@@ -86,7 +87,7 @@ for token in (
     'codesign --verify --strict --verbose=2 "$SRC_APP"',
 ):
     assert token in script, token
-assert "ldid" not in script.lower()
+assert not re.search(r"(?im)^\s*(?:command\s+-v|brew\s+install)\s+ldid\b|^\s*ldid\s+-S", script)
 plist_cleanup = script.index("/usr/libexec/PlistBuddy -c 'Delete :LARABuildSourceCommit'")
 plist_validation = script.index('python3 - "$INFO_PLIST"')
 bundle_sign = script.index("codesign --force --sign - --timestamp=none")
@@ -126,6 +127,10 @@ assert not re.search(r"lara-wz-\*\.(?:ipa|json)", workflow)
 assert "github.event_name != 'pull_request'" not in workflow
 assert "GITHUB_ENV" not in workflow
 assert "ldid" not in workflow.lower()
+
+assert "LDID ?= ldid" in makefile
+assert makefile.count("$(LDID) -S $@") == 2
+assert not re.search(r"(?m)^\s*@?ldid\s+-S", makefile)
 
 
 script_xpf_match = re.search(r"(?ms)^xpf_sources=\(\n(.*?)^\)", script)

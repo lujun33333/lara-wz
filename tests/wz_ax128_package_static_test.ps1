@@ -5,6 +5,7 @@ $project = Get-Content -LiteralPath (Join-Path $root 'lara.xcodeproj/project.pbx
 $info = Get-Content -LiteralPath (Join-Path $root 'lara/Info.plist') -Raw -Encoding UTF8
 $build = Get-Content -LiteralPath (Join-Path $root 'scripts/build_ipa_wz.sh') -Raw -Encoding UTF8
 $workflow = Get-Content -LiteralPath (Join-Path $root '.github/workflows/build.yml') -Raw -Encoding UTF8
+$xpfMakefile = Get-Content -LiteralPath (Join-Path $root 'vendor/XPF/Makefile') -Raw -Encoding UTF8
 
 function Require-Literal([string]$content, [string]$token, [string]$message) {
     if ($content -notmatch [regex]::Escape($token)) { throw "FAIL: $message ($token)" }
@@ -107,6 +108,7 @@ Reject-Pattern $resourcePhase 'materialrecipe|visualstyleset|HomeBarAssets|media
 
 foreach ($token in @(
     'PRODUCT_NAME="AX Pro"',
+    'LDID=/usr/bin/true',
     'GRABKERNEL_COMMIT=e015c73aee6c2d3f6b0aad3fa629fe4c0429b7a6',
     'GRAB_PARTIAL_SHA256=83aea6edd5d538bf72a91ec8feb4847eb2ae99612e56fd9aa61ee9dfccca3241',
     'GRAB_PARTIAL_FAT_ARCHIVE="$GRABKERNEL_DIR/_external/lib/ios/libpartial.a"',
@@ -150,7 +152,8 @@ foreach ($token in @(
 Reject-Pattern $build 'XPF_EMBEDDED="\$SRC_APP/Frameworks|@executable_path/Frameworks/libxpf|cp\s+"\$XPF_DIR/output/ios/libxpf\.dylib"' 'build script still ships XPF dynamically'
 Require-Count $build 'rm -rf -- "\$target"' 1 'recursive cleanup must be centralized in reset_build_dir'
 Reject-Pattern $build 'rm -rf(?! -- "\$target")' 'unguarded recursive cleanup remains'
-Reject-Pattern ($build + "`n" + $workflow) '(?i)\bldid\b' 'unsupported ldid signing dependency remains'
+Reject-Pattern $workflow '(?i)\bldid\b' 'workflow still installs or invokes ldid'
+Reject-Pattern $build '(?im)^\s*(command\s+-v|brew\s+install)\s+ldid\b|^\s*ldid\s+-S' 'build script still requires or directly invokes ldid'
 Reject-Pattern $build '(?m)^FINGERPRINT=\$\(shasum -a 256' 'partial fixed-file source fingerprint remains'
 $sourceStatusPosition = $build.IndexOf('SOURCE_STATUS=$(git', [StringComparison]::Ordinal)
 $buildOutputPosition = $build.IndexOf('mkdir -p "$ROOT/build"', [StringComparison]::Ordinal)
@@ -178,6 +181,9 @@ if ($plistCleanupPosition -lt 0 -or $plistValidationPosition -lt 0 -or
     $entitlementComparePosition -ge $codesignVerifyPosition) {
     throw 'FAIL: final plist, bundle signing, entitlement comparison and CodeResources verification order drifted'
 }
+Require-Literal $xpfMakefile 'LDID ?= ldid' 'XPF signing command is not overridable'
+Require-Count $xpfMakefile '\$\(LDID\) -S \$@' 2 'all XPF iOS targets must use the overridable signer'
+Reject-Pattern $xpfMakefile '(?m)^\s*@?ldid\s+-S' 'XPF Makefile still hard-codes ldid'
 
 foreach ($token in @(
     'workflow_dispatch:', 'publish:', 'default: false', 'type: boolean',

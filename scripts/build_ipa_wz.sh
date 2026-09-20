@@ -349,7 +349,10 @@ xcrun --sdk iphoneos clang -fsyntax-only -arch arm64 -isysroot "$IOS_SDK" \
     -DXPF_LAYOUT_ONLY -DXPF_TEST_LARA_HEADER "$ROOT/tests/xpf_ax128_layout_test.c" \
     || die "Lara XPF AX 1.2.8 布局编译门禁失败"
 mkdir -p "$ROOT/build"
+# 该 dylib 只用于 lipo/nm/otool ABI 门禁，不进入 App；覆盖 XPF Makefile 的
+# 可选签名器，避免为这个一次性检查产物引入 Homebrew ldid 依赖。
 if ! make -B -C "$XPF_DIR" output/ios/libxpf.dylib CHOMA_PATH="$CHOMA_DIR" \
+        LDID=/usr/bin/true \
         >"$ROOT/build/xpf-build.log" 2>&1; then
     tail -40 "$ROOT/build/xpf-build.log" >&2
     die "libxpf 编译失败，见 build/xpf-build.log"

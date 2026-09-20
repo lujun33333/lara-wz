@@ -1,4 +1,5 @@
 CC = clang
+LDID ?= ldid
 
 CHOMA_DYLIB_PATH ?= 0
 CHOMA_PATH       ?= external/ChOma
@@ -26,7 +27,7 @@ $(OUTPUT_ROOT)/macos/libxpf.dylib: $(XPF_SOURCES) $(CHOMA_DEP)
 $(OUTPUT_ROOT)/ios/libxpf.dylib: $(XPF_SOURCES) $(CHOMA_DEP)
 	@mkdir -p $(shell dirname $@)
 	$(CC) $(CFLAGS_IOS) $(LDFLAGS) -dynamiclib -install_name @executable_path/Frameworks/libxpf.dylib -o $@ $^
-	ldid -S $@
+	$(LDID) -S $@
 
 $(OUTPUT_ROOT)/macos/xpf_test: $(wildcard src/cli/*.c)
 	@mkdir -p $(shell dirname $@)
@@ -35,7 +36,7 @@ $(OUTPUT_ROOT)/macos/xpf_test: $(wildcard src/cli/*.c)
 $(OUTPUT_ROOT)/ios/xpf_test: $(wildcard src/cli/*.c)
 	@mkdir -p $(shell dirname $@)
 	$(CC) $(CFLAGS_IOS) $(LDFLAGS) -L$(shell dirname $@) -lxpf -o $@ $^
-	@ldid -S $@
+	@$(LDID) -S $@
 
 clean:
 	@rm -rf $(OUTPUT_ROOT)
