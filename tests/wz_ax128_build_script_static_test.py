@@ -119,10 +119,11 @@ assert (
 for token in (
     "workflow_dispatch:",
     "publish:",
+    "local_test_auth_bypass:",
     "default: false",
     "type: boolean",
     "contents: read",
-    "if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish == true }}",
+    "if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish == true && inputs.local_test_auth_bypass != true }}",
     "if-no-files-found: error",
     "AX-Pro-1.2.8-*.ipa",
     "AX-Pro-1.2.8-*.json",
@@ -130,6 +131,8 @@ for token in (
     "AX-Pro-1.2.8-*.sha256",
     "build/xcodebuild-wz.log",
     'shasum -a 256 -c "${CHECKSUMS[0]}"',
+    "refusing to publish local-test auth bypass artifact",
+    "refusing to publish manifest with local-test authorization bypass",
 ):
     assert token in workflow, token
 assert len(re.findall(r"(?m)^\s{6}contents: write\s*$", workflow)) == 1
@@ -137,6 +140,18 @@ assert len(re.findall(r"(?m)^\s{2}contents: read\s*$", workflow)) == 1
 assert not re.search(r"lara-wz-\*\.(?:ipa|json)", workflow)
 assert "github.event_name != 'pull_request'" not in workflow
 assert "GITHUB_ENV" not in workflow
+
+for token in (
+    "AX_LOCAL_TEST_AUTH_BYPASS=0",
+    "--local-test-auth-bypass) AX_LOCAL_TEST_AUTH_BYPASS=1",
+    "GCC_PREPROCESSOR_DEFINITIONS=$(inherited) AX_LOCAL_TEST_AUTH_BYPASS=0",
+    "GCC_PREPROCESSOR_DEFINITIONS=$(inherited) AX_LOCAL_TEST_AUTH_BYPASS=1",
+    "SWIFT_ACTIVE_COMPILATION_CONDITIONS=$(inherited) AX_LOCAL_TEST_AUTH_BYPASS",
+    "PRODUCT_BUNDLE_IDENTIFIER=com.ax.ax.localtest",
+    '"localTestAuthorizationBypass": $AUTH_BYPASS_JSON',
+    '"bundleIdentifier": "$EXPECTED_BUNDLE_IDENTIFIER"',
+):
+    assert token in script, token
 assert "ldid" not in workflow.lower()
 
 assert "LDID ?= ldid" in makefile

@@ -11,6 +11,11 @@ on:
         required: true
         default: false
         type: boolean
+      local_test_auth_bypass:
+        description: Build an explicitly marked local-test IPA without card verification
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -34,9 +39,15 @@ jobs:
         run: xcodebuild -version
 
       - name: build
+        env:
+          LOCAL_TEST_AUTH_BYPASS: ${{ inputs.local_test_auth_bypass || false }}
         run: |
           chmod +x scripts/build_ipa_wz.sh
-          ./scripts/build_ipa_wz.sh
+          BUILD_ARGS=()
+          if [ "$LOCAL_TEST_AUTH_BYPASS" = true ]; then
+            BUILD_ARGS+=(--local-test-auth-bypass)
+          fi
+          ./scripts/build_ipa_wz.sh "${BUILD_ARGS[@]}"
 
       - name: summary
         if: always()
@@ -69,6 +80,19 @@ jobs:
           done
           shasum -a 256 -c "$CHECKSUMS"
 
+          AUTH_BYPASS=$(python3 -c 'import json,sys; print("true" if json.load(open(sys.argv[1], encoding="utf-8"))["localTestAuthorizationBypass"] else "false")' "$JSON")
+          case "$AUTH_BYPASS:$STEM" in
+            true:*-local-test-auth-bypass-*) ;;
+            false:*-local-test-auth-bypass-*)
+              echo "production manifest uses a local-test artifact name" >&2
+              exit 1
+              ;;
+            false:*) ;;
+            *)
+              echo "local-test manifest/artifact name mismatch" >&2
+              exit 1
+              ;;
+          esac
           SOURCE_STATE=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["sourceState"])' "$JSON")
           SOURCE_COMMIT=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["sourceCommit"])' "$JSON")
           SOURCE_TREE=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["sourceTree"])' "$JSON")
@@ -83,12 +107,13 @@ jobs:
             printf '| Commit | `%s` |\n' "$SOURCE_COMMIT"
             printf '| Tree | `%s` |\n' "$SOURCE_TREE"
             printf '| Source fingerprint | `%s` |\n' "$SOURCE_FINGERPRINT"
+            printf '| Local-test auth bypass | `%s` |\n' "$AUTH_BYPASS"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: upload verified build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ax-pro-1.2.8-build-${{ github.sha }}
+          name: ax-pro-1.2.8-${{ inputs.local_test_auth_bypass == true && 'local-test-auth-bypass' || 'production' }}-${{ github.sha }}
           if-no-files-found: error
           path: |
             AX-Pro-1.2.8-*.ipa
@@ -98,7 +123,7 @@ jobs:
             build/xcodebuild-wz.log
 
   release:
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish == true }}
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish == true && inputs.local_test_auth_bypass != true }}
     needs: build
     runs-on: ubuntu-latest
     permissions:
@@ -113,7 +138,7 @@ jobs:
       - name: download verified build artifact
         uses: actions/download-artifact@v4
         with:
-          name: ax-pro-1.2.8-build-${{ github.sha }}
+          name: ax-pro-1.2.8-production-${{ github.sha }}
           path: build/
 
       - name: verify downloaded build artifact
@@ -125,6 +150,22 @@ jobs:
             exit 1
           fi
           shasum -a 256 -c "${CHECKSUMS[0]}"
+          JSONS=(AX-Pro-1.2.8-*.json)
+          if [ "${#JSONS[@]}" -ne 1 ] || [ ! -f "${JSONS[0]}" ]; then
+            echo "expected exactly one AX Pro 1.2.8 JSON manifest" >&2
+            exit 1
+          fi
+          case "${JSONS[0]}" in
+            *-local-test-auth-bypass-*)
+              echo "refusing to publish local-test auth bypass artifact" >&2
+              exit 1
+              ;;
+          esac
+          AUTH_BYPASS=$(python3 -c 'import json,sys; print("true" if json.load(open(sys.argv[1], encoding="utf-8"))["localTestAuthorizationBypass"] else "false")' "${JSONS[0]}")
+          if [ "$AUTH_BYPASS" != false ]; then
+            echo "refusing to publish manifest with local-test authorization bypass" >&2
+            exit 1
+          fi
 
       - name: write release notes
         run: |

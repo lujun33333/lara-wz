@@ -7,15 +7,47 @@ enum AXLauncherAuthorizationState: Equatable {
     case activated(expiryText: String)
     case expired(expiryText: String?)
     case failed(message: String)
+    #if AX_LOCAL_TEST_AUTH_BYPASS
+    case localTesting
+    #endif
+
+    static var initialForCurrentBuild: Self {
+        applyingBuildPolicy(to: .unverified)
+    }
+
+    static func applyingBuildPolicy(to state: Self) -> Self {
+        #if AX_LOCAL_TEST_AUTH_BYPASS
+        precondition(ax_launcher_local_test_authorization_bypass_enabled())
+        return .localTesting
+        #else
+        return state
+        #endif
+    }
 
     var showsActivationForm: Bool {
-        if case .activated = self { return false }
-        return true
+        switch self {
+        case .activated:
+            return false
+        #if AX_LOCAL_TEST_AUTH_BYPASS
+        case .localTesting:
+            return false
+        #endif
+        default:
+            return true
+        }
     }
 
     var canLaunch: Bool {
-        if case .activated = self { return true }
-        return false
+        switch self {
+        case .activated:
+            return true
+        #if AX_LOCAL_TEST_AUTH_BYPASS
+        case .localTesting:
+            return true
+        #endif
+        default:
+            return false
+        }
     }
 
     var isActivated: Bool { canLaunch }
@@ -33,6 +65,10 @@ enum AXLauncherAuthorizationState: Equatable {
             return "授权已过期：\(expiryText)"
         case let .failed(message):
             return message
+        #if AX_LOCAL_TEST_AUTH_BYPASS
+        case .localTesting:
+            return "LOCAL TEST AUTH BYPASS · 已跳过卡密验证"
+        #endif
         }
     }
 }
@@ -95,8 +131,9 @@ final class AXLauncherViewController: UIViewController {
 
     init(manager: laramgr, authorizationState: AXLauncherAuthorizationState) {
         self.mgr = manager
-        self.authorizationState = authorizationState
+        self.authorizationState = .applyingBuildPolicy(to: authorizationState)
         super.init(nibName: nil, bundle: nil)
+        manager.updateWZAuthorizationAccess(self.authorizationState.canLaunch)
     }
 
     @available(*, unavailable)
@@ -158,7 +195,8 @@ final class AXLauncherViewController: UIViewController {
             }
             return
         }
-        authorizationState = state
+        authorizationState = .applyingBuildPolicy(to: state)
+        mgr.updateWZAuthorizationAccess(authorizationState.canLaunch)
         if isViewLoaded {
             updatePresentation()
         }

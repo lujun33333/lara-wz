@@ -62,7 +62,7 @@ final class LaraSceneDelegate: UIResponder, UIWindowSceneDelegate {
         window.backgroundColor = .black
         window.rootViewController = AXLauncherViewController(
             manager: laramgr.shared,
-            authorizationState: .unverified
+            authorizationState: .initialForCurrentBuild
         )
         window.makeKeyAndVisible()
     }

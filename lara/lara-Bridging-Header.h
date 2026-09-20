@@ -12,6 +12,7 @@
 #import "wzmem.h"
 #import "wzesp.h"
 #import "WZHUDBridge.h"
+#import "headers/AXLauncherAuthorizationPolicy.h"
 #import "vnode.h"
 #import "apfs.h"
 #import "vfs.h"

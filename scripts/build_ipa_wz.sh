@@ -8,13 +8,32 @@ SCHEME=lara
 PRODUCT_NAME="AX Pro"
 CONFIG=Release
 DERIVED="$ROOT/build/DerivedDataWZ"
+AX_LOCAL_TEST_AUTH_BYPASS=0
 
 for arg in "$@"; do
     case "$arg" in
         --debug) CONFIG=Debug ;;
-        *) echo "未知参数：$arg（可用：--debug）" >&2; exit 2 ;;
+        --local-test-auth-bypass) AX_LOCAL_TEST_AUTH_BYPASS=1 ;;
+        *) echo "未知参数：$arg（可用：--debug、--local-test-auth-bypass）" >&2; exit 2 ;;
     esac
 done
+
+AUTH_BYPASS_BUILD_SETTINGS=(
+    'GCC_PREPROCESSOR_DEFINITIONS=$(inherited) AX_LOCAL_TEST_AUTH_BYPASS=0'
+)
+AUTH_BYPASS_JSON=false
+AUTH_BYPASS_PACKAGE_SUFFIX=
+EXPECTED_BUNDLE_IDENTIFIER=com.ax.ax
+if [[ "$AX_LOCAL_TEST_AUTH_BYPASS" == 1 ]]; then
+    AUTH_BYPASS_BUILD_SETTINGS=(
+        'GCC_PREPROCESSOR_DEFINITIONS=$(inherited) AX_LOCAL_TEST_AUTH_BYPASS=1'
+        'SWIFT_ACTIVE_COMPILATION_CONDITIONS=$(inherited) AX_LOCAL_TEST_AUTH_BYPASS'
+        'PRODUCT_BUNDLE_IDENTIFIER=com.ax.ax.localtest'
+    )
+    AUTH_BYPASS_JSON=true
+    AUTH_BYPASS_PACKAGE_SUFFIX=-local-test-auth-bypass
+    EXPECTED_BUNDLE_IDENTIFIER=com.ax.ax.localtest
+fi
 
 say() { printf '[*] %s\n' "$*"; }
 ok()  { printf '[+] %s\n' "$*"; }
@@ -467,6 +486,10 @@ need_files=(
     "lara/kexploit/wz/YuanbaoCollector.mm"
     "lara/kexploit/wz/WZAXActorCache.h"
     "lara/kexploit/wz/WZAXMonsterPolicy.h"
+    "lara/headers/AXLauncherAuthorizationPolicy.h"
+    "lara/lara-Bridging-Header.h"
+    "lara/lara.swift"
+    "lara/views/app/ContentView.swift"
     "lara/kexploit/wz/WZAXTouch.h"
     "lara/kexploit/wz/WZAXTouch.mm"
     "lara/kexploit/WZAXFeatureRules.h"
@@ -499,7 +522,7 @@ grep -q 'wz_read' "$ROOT/lara/kexploit/wz/KoiProjection.mm" \
 
 reset_build_dir "$DERIVED"
 mkdir -p "$ROOT/build"
-say "构建 AX Pro ($CONFIG, source=$SOURCE_STATE/$SOURCE_COMMIT_SHORT)..."
+say "构建 AX Pro ($CONFIG, source=$SOURCE_STATE/$SOURCE_COMMIT_SHORT, local-test-auth-bypass=$AUTH_BYPASS_JSON)..."
 set +e
 xcodebuild \
     -project "$ROOT/$PROJECT.xcodeproj" \
@@ -511,6 +534,7 @@ xcodebuild \
     CODE_SIGNING_REQUIRED=NO \
     CODE_SIGN_ENTITLEMENTS="" \
     CODE_SIGNING_ALLOWED=NO \
+    "${AUTH_BYPASS_BUILD_SETTINGS[@]}" \
     clean build 2>&1 | tee "$ROOT/build/xcodebuild-wz.log" | tail -40
 status=${PIPESTATUS[0]}
 set -e
@@ -531,12 +555,13 @@ INFO_PLIST="$SRC_APP/Info.plist"
 /usr/libexec/PlistBuddy -c 'Delete :LARABuildSourceCommit' "$INFO_PLIST" \
     >/dev/null 2>&1 || true
 
-python3 - "$INFO_PLIST" <<'PY' || die "最终 Info.plist 与 AX 1.2.8 包体契约不一致"
+python3 - "$INFO_PLIST" "$EXPECTED_BUNDLE_IDENTIFIER" <<'PY' || die "最终 Info.plist 与 AX 1.2.8 包体契约不一致"
 import pathlib
 import plistlib
 import sys
 
 path = pathlib.Path(sys.argv[1])
+expected_bundle_identifier = sys.argv[2]
 with path.open("rb") as stream:
     info = plistlib.load(stream)
 
@@ -544,7 +569,7 @@ expected = {
     "CFBundleDisplayName": "AX Pro",
     "CFBundleName": "AX Pro",
     "CFBundleExecutable": "AX Pro",
-    "CFBundleIdentifier": "com.ax.ax",
+    "CFBundleIdentifier": expected_bundle_identifier,
     "CFBundleShortVersionString": "1.2.8",
     "CFBundleVersion": "1",
     "MinimumOSVersion": "16.5.1",
@@ -719,6 +744,13 @@ for forbidden in --wzhud-host posix_spawn direct_remote_ WZHUDFloatWindow; do
     LC_ALL=C grep -a -q -- "$forbidden" "$BIN" \
         && die "最终二进制仍混入已删除的 HUD 路径：$forbidden"
 done
+if [[ "$AX_LOCAL_TEST_AUTH_BYPASS" == 1 ]]; then
+    LC_ALL=C grep -a -q -- "LOCAL TEST AUTH BYPASS" "$BIN" \
+        || die "本地测试包缺少授权绕过可见标记"
+else
+    LC_ALL=C grep -a -q -- "LOCAL TEST AUTH BYPASS" "$BIN" \
+        && die "正式包混入本地测试授权绕过标记"
+fi
 
 # 字段偏移已经由两份头文件的编译期断言和上面的独立 arm64/arm64e dylib
 # 指令级门禁覆盖。静态库进入主程序后可能被 LTO/内联/linker relaxation 改写为
@@ -804,7 +836,7 @@ if signature_entries != {"CodeResources"}:
 PY
 
 WZ_UUID="6a838f46-a5e8-3ec9-bbce-6b01ab2ffad4"
-PACKAGE_STEM="AX-Pro-1.2.8-${SOURCE_COMMIT_SHORT}-${SOURCE_FINGERPRINT_SHORT}-${WZ_UUID}"
+PACKAGE_STEM="AX-Pro-1.2.8-${SOURCE_COMMIT_SHORT}-${SOURCE_FINGERPRINT_SHORT}${AUTH_BYPASS_PACKAGE_SUFFIX}-${WZ_UUID}"
 STAGE="$ROOT/build/package-wz"
 OUTPUT_IPA="$ROOT/$PACKAGE_STEM.ipa"
 OUTPUT_MANIFEST="$ROOT/$PACKAGE_STEM.json"
@@ -820,7 +852,7 @@ mkdir -p "$STAGE/Payload"
 cp -R "$SRC_APP" "$STAGE/Payload/$PRODUCT_NAME.app"
 (cd "$STAGE" && zip -qry "$OUTPUT_IPA" Payload)
 
-python3 - "$OUTPUT_IPA" <<'PY' \
+python3 - "$OUTPUT_IPA" "$EXPECTED_BUNDLE_IDENTIFIER" <<'PY' \
     || die "最终 IPA 的 ZIP 条目、plist 或资源与 AX 1.2.8 契约不一致"
 import hashlib
 import plistlib
@@ -829,6 +861,7 @@ import zipfile
 from collections import Counter
 
 archive = sys.argv[1]
+expected_bundle_identifier = sys.argv[2]
 prefix = "Payload/AX Pro.app/"
 required = {
     "AX Pro",
@@ -890,7 +923,7 @@ with zipfile.ZipFile(archive) as ipa:
     info = plistlib.loads(ipa.read(prefix + "Info.plist"))
     for key, expected in {
         "CFBundleExecutable": "AX Pro",
-        "CFBundleIdentifier": "com.ax.ax",
+        "CFBundleIdentifier": expected_bundle_identifier,
         "MinimumOSVersion": "16.5.1",
         "UILaunchStoryboardName": "LaunchScreen",
     }.items():
@@ -908,6 +941,7 @@ cat > "$OUTPUT_MANIFEST" <<JSON
   "targetProcess": "smoba",
   "targetBundle": "com.tencent.smoba",
   "targetVersion": "11.4.10103",
+  "bundleIdentifier": "$EXPECTED_BUNDLE_IDENTIFIER",
   "unityFrameworkUUID": "$WZ_UUID",
   "sourceState": "$SOURCE_STATE",
   "sourceCommit": "$SOURCE_COMMIT",
@@ -917,6 +951,7 @@ cat > "$OUTPUT_MANIFEST" <<JSON
   "sourceManifestSha256": "$SOURCE_MANIFEST_SHA256",
   "ipaSha256": "$IPA_SHA256",
   "buildLogSha256": "$BUILD_LOG_SHA256",
+  "localTestAuthorizationBypass": $AUTH_BYPASS_JSON,
   "transportPolicy": "mach-task-readonly-or-mapped-pages",
   "writeFeaturesEnabled": false
 }

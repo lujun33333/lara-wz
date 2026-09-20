@@ -122,6 +122,8 @@ final class laramgr: ObservableObject {
     private var wzSceneDisconnecting = false
     private var wzSceneEpoch: UInt64 = 0
     private var wzLaunchPending = false
+    private var wzAuthorizationAllowsFunctionalAccess =
+        ax_launcher_authorization_allows_functional_access(false)
     lazy var ytProc = RemoteCall(process: "youtube", useMigFilterBypass: false)
     @Published var wzAttached: Bool = false
     @Published var wzRunning: Bool = false
@@ -368,10 +370,26 @@ final class laramgr: ObservableObject {
     func initializeWZEnvironment() {
         prepareWZEnvironment(connectWhenReady: false)
     }
+    func updateWZAuthorizationAccess(_ verified: Bool) {
+        wzAuthorizationAllowsFunctionalAccess =
+            ax_launcher_authorization_allows_functional_access(verified)
+        if !wzAuthorizationAllowsFunctionalAccess {
+            wzLaunchPending = false
+        }
+    }
+    private func requireWZAuthorization() -> Bool {
+        guard wzAuthorizationAllowsFunctionalAccess else {
+            wzLaunchPending = false
+            wzStatus = "请先完成卡密验证"
+            return false
+        }
+        return true
+    }
     func setWZControlPanelPresented(_ presented: Bool) {
         // The hosted menu is the single control surface in both apps. Do not
         // mount a second SwiftUI copy or rotate the Lara scene underneath it.
         if presented {
+            guard requireWZAuthorization() else { return }
             if !wzGameHUDEnabled { setGameHUD(true) }
             wzhud_set_panel_visible(true)
         } else {
@@ -386,6 +404,7 @@ final class laramgr: ObservableObject {
         }
     }
     func prepareWZEnvironment(connectWhenReady: Bool = true) {
+        guard requireWZAuthorization() else { return }
         guard !wzTerminating, !wzSceneDisconnecting,
               !dsrunning, !wzRunning, !wzAttached else { return }
         let sceneEpoch = wzSceneEpoch
@@ -451,6 +470,7 @@ final class laramgr: ObservableObject {
         }
     }
     func launchWZGame() {
+        guard requireWZAuthorization() else { return }
         guard !wzTerminating, !wzSceneDisconnecting else { return }
         let support = axDeviceSupportStatus()
         guard support.isSupported else {
@@ -637,6 +657,7 @@ final class laramgr: ObservableObject {
         }
     }
     func wzAttach(process: String = "smoba") {
+        guard requireWZAuthorization() else { return }
         guard !wzRunning, !wzAttached else { return }
         wzRunning = true
         wzEpoch &+= 1
@@ -757,6 +778,7 @@ final class laramgr: ObservableObject {
 
 
     func setGameHUD(_ enabled: Bool) {
+        if enabled, !requireWZAuthorization() { return }
         wzGameHUDEnabled = enabled
         UserDefaults.standard.set(false, forKey: "wzGameHUDEnabled")
         if enabled {

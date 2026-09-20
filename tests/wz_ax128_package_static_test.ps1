@@ -208,12 +208,18 @@ Reject-Pattern $xpfMakefile '(?m)^\s*@?ldid\s+-S' 'XPF Makefile still hard-codes
 foreach ($token in @(
     'workflow_dispatch:', 'publish:', 'default: false', 'type: boolean',
     'contents: read',
-    'if: ${{ github.event_name == ''workflow_dispatch'' && inputs.publish == true }}',
+    'if: ${{ github.event_name == ''workflow_dispatch'' && inputs.publish == true && inputs.local_test_auth_bypass != true }}',
     'if-no-files-found: error',
     'AX-Pro-1.2.8-*.ipa', 'AX-Pro-1.2.8-*.json',
     'AX-Pro-1.2.8-*.sources.jsonl', 'AX-Pro-1.2.8-*.sha256',
     'build/xcodebuild-wz.log', 'shasum -a 256 -c "${CHECKSUMS[0]}"'
 )) { Require-Literal $workflow $token 'CI artifact/source-binding contract missing' }
+foreach ($token in @(
+    'local_test_auth_bypass:', 'BUILD_ARGS+=(--local-test-auth-bypass)',
+    'true:*-local-test-auth-bypass-*',
+    'refusing to publish local-test auth bypass artifact',
+    'refusing to publish manifest with local-test authorization bypass'
+)) { Require-Literal $workflow $token 'local-test artifact publish boundary missing' }
 Require-Count $workflow '(?m)^\s{6}contents: write\s*$' 1 'contents:write must be scoped to the release job only'
 Require-Count $workflow '(?m)^\s{2}contents: read\s*$' 1 'workflow default permissions must be read-only'
 Reject-Pattern $workflow 'lara-wz-\*\.(ipa|json)|github\.event_name\s*!=\s*''pull_request''' 'stale artifact glob or implicit publishing remains'
