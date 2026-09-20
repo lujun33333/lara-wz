@@ -208,6 +208,9 @@ foreach ($xpfSource in @(
     Reject-Text $xpfSource 'xpf_start_with_kernel_path\s*\([^\)\r\n]*,' '仍存在多参数 XPF 声明、实现或调用'
 }
 Require-Text 'scripts/build_ipa_wz.sh' '拒绝构建 ABI 混用产物' '出货构建未阻止 XPF 单/三参数 ABI 混用'
+# App 直接读取导出的 gXPF；其本地结构声明必须与实际 dylib 完全同步。
+Require-Text 'lara/headers/xpf.h' 'kernelBootdataInit;[\s\S]{0,100}kernelBootcodeSection;[\s\S]{0,500}kernelSandboxAuthStubSection;[\s\S]{0,300}kernelInfoPlistSection;[\s\S]{0,500}decompressedSptm;[\s\S]{0,500}decompressedTxm;[\s\S]{0,500}XPFItem \*firstItem;[\s\S]{0,100}bool ignoreBaseSet;' 'Lara 的 gXPF 布局未同步 vendor 新字段，firstItem 偏移会错误'
+Require-Text 'scripts/build_ipa_wz.sh' 'Lara 与 vendor/XPF 的 gXPF 结构布局不一致' '出货构建未阻止 gXPF 结构布局漂移'
 Require-Text 'lara/kexploit/xpfitems.m' 'static const char \*kAXSets\[\] = \{ "base", "translation", "physmap", NULL \}' '缺少 AX 的三组字典集合'
 Require-Text 'lara/kexploit/xpfitems.m' 'xpf_construct_offset_dictionary\(kAXSets\)' '未走 XPF 正规字典入口'
 Require-Text 'lara/kexploit/xpfitems.m' 'xpc_dictionary_get_uint64\(dict, "kernelConstant.T1SZ_BOOT"\)' '未从字典取 T1SZ_BOOT'

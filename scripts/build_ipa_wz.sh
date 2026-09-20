@@ -51,6 +51,26 @@ if LC_ALL=C grep -nE 'xpf_start_with_kernel_path[[:space:]]*\([^)]*,' \
         "$XPF_DIR/src/cli/main.c"; then
     die "检测到多参数 xpf_start_with_kernel_path，拒绝构建 ABI 混用产物"
 fi
+# Lara 会直接读取导出全局 gXPF 的字段；两份头文件的结构体必须逐字段一致。
+# 2026-09-20 曾因 Lara 仍把 firstItem 当成 +0x110、而 dylib 已移到 +0x1a8，
+# 将 kernelSandboxAuthStubSection 误作链表头并在 Mach-O 魔数地址上崩溃。
+python3 - "$ROOT/lara/headers/xpf.h" "$XPF_DIR/src/xpf.h" <<'PY' \
+    || die "Lara 与 vendor/XPF 的 gXPF 结构布局不一致"
+import pathlib
+import re
+import sys
+
+def struct_body(path):
+    text = pathlib.Path(path).read_text(encoding="utf-8")
+    match = re.search(r"typedef\s+struct\s+s_XPF\s*\{(.*?)\}\s*XPF\s*;", text, re.S)
+    if not match:
+        raise SystemExit(f"找不到 XPF 结构体: {path}")
+    body = re.sub(r"/\*.*?\*/|//[^\r\n]*", "", match.group(1), flags=re.S)
+    return re.sub(r"\s+", " ", body).strip()
+
+if struct_body(sys.argv[1]) != struct_body(sys.argv[2]):
+    raise SystemExit("gXPF layout mismatch")
+PY
 if [ ! -d "$XPF_DIR/external/ChOma/src" ]; then
     say "拉取 ChOma 子模块 ..."
     rm -rf "$XPF_DIR/external/ChOma"
