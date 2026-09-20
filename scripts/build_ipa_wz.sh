@@ -48,6 +48,7 @@ command -v xcodebuild >/dev/null 2>&1 || die "缺少 xcodebuild"
 command -v zip >/dev/null 2>&1 || die "缺少 zip"
 command -v python3 >/dev/null 2>&1 || die "缺少 python3"
 command -v git >/dev/null 2>&1 || die "缺少 git"
+command -v codesign >/dev/null 2>&1 || die "缺少 codesign"
 
 # 在任何依赖拉取、编译或生成文件之前固定源码身份；否则构建中间产物会把
 # 干净的 CI checkout 误判为 dirty。build/ 与最终根目录产物均不进入清单。
@@ -347,7 +348,6 @@ xcrun --sdk iphoneos clang -fsyntax-only -arch arm64 -isysroot "$IOS_SDK" \
 xcrun --sdk iphoneos clang -fsyntax-only -arch arm64 -isysroot "$IOS_SDK" \
     -DXPF_LAYOUT_ONLY -DXPF_TEST_LARA_HEADER "$ROOT/tests/xpf_ax128_layout_test.c" \
     || die "Lara XPF AX 1.2.8 布局编译门禁失败"
-command -v ldid >/dev/null 2>&1 || die "缺少 ldid（brew install ldid）"
 mkdir -p "$ROOT/build"
 if ! make -B -C "$XPF_DIR" output/ios/libxpf.dylib CHOMA_PATH="$CHOMA_DIR" \
         >"$ROOT/build/xpf-build.log" 2>&1; then
@@ -523,17 +523,6 @@ BIN="$SRC_APP/$PRODUCT_NAME"
 INFO_PLIST="$SRC_APP/Info.plist"
 [[ -f "$INFO_PLIST" ]] || die "构建后未找到 Info.plist"
 
-say "使用 AX 本地双窗口权限签名 App bundle（纯进程内托管，无 SpringBoard 注入）..."
-# 对 bundle 做 shallow sign，既保留只签主 Mach-O 的边界，也生成与资源匹配的
-# _CodeSignature/CodeResources；只签可执行文件会留下未密封的 App bundle。
-ldid -w -S"$ROOT/Config/lara.entitlements" "$SRC_APP"
-entitlements=$(ldid -e "$BIN")
-grep -q 'com.apple.QuartzCore.displayable-context' <<<"$entitlements" \
-    || die "主 executable 签名缺少 displayable-context"
-grep -q 'com.apple.springboard.accessibility-window-hosting' <<<"$entitlements" \
-    || die "主 executable 签名缺少 accessibility-window-hosting"
-[[ -f "$SRC_APP/_CodeSignature/CodeResources" ]] \
-    || die "App bundle 签名未生成 _CodeSignature/CodeResources"
 # AX 1.2.8 参考 plist 没有工程自定义的构建指纹；提交信息只写入
 # IPA 旁边的 JSON 清单。PlistBuddy 仅用于清理旧 DerivedData 可能残留的键。
 /usr/libexec/PlistBuddy -c 'Delete :LARABuildSourceCommit' "$INFO_PLIST" \
@@ -609,6 +598,46 @@ for forbidden in (
     if forbidden in info:
         raise SystemExit(f"forbidden extra plist key: {forbidden}")
 PY
+
+say "使用 AX 本地双窗口权限对 App bundle 做 ad-hoc codesign（纯进程内托管，无 SpringBoard 注入）..."
+# Info.plist 和全部 bundle 资源必须先固定，再由 codesign 同时签主 Mach-O、写入
+# 当前完整 entitlement 集并生成与最终资源匹配的 _CodeSignature/CodeResources。
+codesign --force --sign - --timestamp=none \
+    --entitlements "$ROOT/Config/lara.entitlements" \
+    --generate-entitlement-der "$SRC_APP"
+SIGNED_ENTITLEMENTS="$ROOT/build/AX-Pro-main-entitlements.plist"
+if ! codesign -d --entitlements :- "$BIN" >"$SIGNED_ENTITLEMENTS"; then
+    die "无法读取最终主 executable entitlements"
+fi
+python3 - "$ROOT/Config/lara.entitlements" "$SIGNED_ENTITLEMENTS" <<'PY' \
+    || die "最终主 executable 未逐键保留 Config/lara.entitlements"
+import pathlib
+import plistlib
+import sys
+
+expected_path = pathlib.Path(sys.argv[1])
+actual_path = pathlib.Path(sys.argv[2])
+with expected_path.open("rb") as stream:
+    expected = plistlib.load(stream)
+with actual_path.open("rb") as stream:
+    actual = plistlib.load(stream)
+
+if not isinstance(expected, dict) or not isinstance(actual, dict):
+    raise SystemExit("entitlements root must be a dictionary")
+missing = sorted(key for key in expected if key not in actual)
+mismatched = sorted(
+    key for key, expected_value in expected.items()
+    if key in actual and actual[key] != expected_value
+)
+if missing:
+    raise SystemExit(f"missing signed entitlement keys: {missing}")
+if mismatched:
+    raise SystemExit(f"mismatched signed entitlement values: {mismatched}")
+PY
+[[ -f "$SRC_APP/_CodeSignature/CodeResources" ]] \
+    || die "App bundle 签名未生成 _CodeSignature/CodeResources"
+codesign --verify --strict --verbose=2 "$SRC_APP" \
+    || die "最终 App bundle codesign/CodeResources 校验失败"
 
 for object in wzmem.o wzesp.o KoiProjection.o YuanbaoCollector.o WZAXTouch.o WZHUDBridge.o laramgr.o; do
     find "$DERIVED" -name "$object" -print -quit | grep -q . \

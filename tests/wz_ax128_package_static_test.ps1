@@ -123,7 +123,15 @@ foreach ($token in @(
     'reset_build_dir "$STATIC_DIR"', 'reset_build_dir "$DERIVED"', 'reset_build_dir "$STAGE"',
     'rm -rf -- "$target"', 'remove_previous_output "$OUTPUT_IPA"',
     'remove_previous_output "$OUTPUT_MANIFEST"',
-    'ldid -w -S"$ROOT/Config/lara.entitlements" "$SRC_APP"',
+    'command -v codesign',
+    'codesign --force --sign - --timestamp=none',
+    '--entitlements "$ROOT/Config/lara.entitlements"',
+    '--generate-entitlement-der "$SRC_APP"',
+    'SIGNED_ENTITLEMENTS="$ROOT/build/AX-Pro-main-entitlements.plist"',
+    'codesign -d --entitlements :- "$BIN" >"$SIGNED_ENTITLEMENTS"',
+    'python3 - "$ROOT/Config/lara.entitlements" "$SIGNED_ENTITLEMENTS"',
+    'missing signed entitlement keys', 'mismatched signed entitlement values',
+    'codesign --verify --strict --verbose=2 "$SRC_APP"',
     'App bundle 签名未生成 _CodeSignature/CodeResources',
     'duplicate ZIP entries', 'missing _CodeSignature/CodeResources',
     'signature entries mismatch',
@@ -141,7 +149,8 @@ foreach ($token in @(
 )) { Require-Literal $build $token 'AX final-product gate missing' }
 Reject-Pattern $build 'XPF_EMBEDDED="\$SRC_APP/Frameworks|@executable_path/Frameworks/libxpf|cp\s+"\$XPF_DIR/output/ios/libxpf\.dylib"' 'build script still ships XPF dynamically'
 Require-Count $build 'rm -rf -- "\$target"' 1 'recursive cleanup must be centralized in reset_build_dir'
-Reject-Pattern $build 'rm -rf(?! -- "\$target")|ldid\s+-S[^\r\n]*"\$BIN"' 'unguarded cleanup or executable-only bundle signing remains'
+Reject-Pattern $build 'rm -rf(?! -- "\$target")' 'unguarded recursive cleanup remains'
+Reject-Pattern ($build + "`n" + $workflow) '(?i)\bldid\b' 'unsupported ldid signing dependency remains'
 Reject-Pattern $build '(?m)^FINGERPRINT=\$\(shasum -a 256' 'partial fixed-file source fingerprint remains'
 $sourceStatusPosition = $build.IndexOf('SOURCE_STATUS=$(git', [StringComparison]::Ordinal)
 $buildOutputPosition = $build.IndexOf('mkdir -p "$ROOT/build"', [StringComparison]::Ordinal)
@@ -152,6 +161,22 @@ if ($sourceStatusPosition -lt 0 -or $buildOutputPosition -lt 0 -or
     $sourceManifestPosition -lt 0 -or $xpfBuildPosition -lt 0 -or
     $sourceManifestPosition -ge $xpfBuildPosition) {
     throw 'FAIL: source identity must be captured before any dependency or compiler output'
+}
+$plistCleanupPosition = $build.IndexOf("/usr/libexec/PlistBuddy -c 'Delete :LARABuildSourceCommit'", [StringComparison]::Ordinal)
+$plistValidationPosition = $build.IndexOf('python3 - "$INFO_PLIST"', [StringComparison]::Ordinal)
+$codesignPosition = $build.IndexOf('codesign --force --sign - --timestamp=none', [StringComparison]::Ordinal)
+$entitlementReadPosition = $build.IndexOf('codesign -d --entitlements :- "$BIN"', [StringComparison]::Ordinal)
+$entitlementComparePosition = $build.IndexOf('python3 - "$ROOT/Config/lara.entitlements" "$SIGNED_ENTITLEMENTS"', [StringComparison]::Ordinal)
+$codesignVerifyPosition = $build.IndexOf('codesign --verify --strict --verbose=2 "$SRC_APP"', [StringComparison]::Ordinal)
+if ($plistCleanupPosition -lt 0 -or $plistValidationPosition -lt 0 -or
+    $codesignPosition -lt 0 -or $entitlementReadPosition -lt 0 -or
+    $entitlementComparePosition -lt 0 -or $codesignVerifyPosition -lt 0 -or
+    $plistCleanupPosition -ge $plistValidationPosition -or
+    $plistValidationPosition -ge $codesignPosition -or
+    $codesignPosition -ge $entitlementReadPosition -or
+    $entitlementReadPosition -ge $entitlementComparePosition -or
+    $entitlementComparePosition -ge $codesignVerifyPosition) {
+    throw 'FAIL: final plist, bundle signing, entitlement comparison and CodeResources verification order drifted'
 }
 
 foreach ($token in @(
