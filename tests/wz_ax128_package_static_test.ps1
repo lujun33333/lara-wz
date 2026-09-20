@@ -108,6 +108,11 @@ Reject-Pattern $resourcePhase 'materialrecipe|visualstyleset|HomeBarAssets|media
 foreach ($token in @(
     'PRODUCT_NAME="AX Pro"',
     'GRABKERNEL_COMMIT=e015c73aee6c2d3f6b0aad3fa629fe4c0429b7a6',
+    'GRAB_PARTIAL_SHA256=83aea6edd5d538bf72a91ec8feb4847eb2ae99612e56fd9aa61ee9dfccca3241',
+    'GRAB_PARTIAL_FAT_ARCHIVE="$GRABKERNEL_DIR/_external/lib/ios/libpartial.a"',
+    'xcrun lipo "$GRAB_PARTIAL_FAT_ARCHIVE" -thin arm64e',
+    'GRAB_PARTIAL_CLASS_DEFINITIONS=', 'GRAB_ARCHIVE_PARTIAL_DEFINITIONS=',
+    'MAIN_PARTIAL_CLASS_DEFINITIONS=',
     'libxpf.a', 'libgrabkernel2.a', '-miphoneos-version-min=16.5.1',
     'XPF_EMBEDDED="$BIN"', 'verify_xpf_binary_layout "$XPF_EMBEDDED" arm64e',
     '主 Mach-O 未静态并入 libxpf', '主 Mach-O 未静态并入 libgrabkernel2',

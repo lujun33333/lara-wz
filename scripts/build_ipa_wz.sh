@@ -392,9 +392,11 @@ grep -q ' _xpf_start_with_kernel_path$' <<<"$XPF_ARCHIVE_SYMBOLS" \
 LC_ALL=C grep -a -q -- "arm_maxoffset" "$STATIC_DIR/libxpf.a" \
     || die "libxpf.a 缺少 arm_maxoffset 兼容 finder"
 
-# libgrabkernel2 上游本身产出静态库。固定提交并只编译 src/*.m；
-# Partial 符号由当前 target 中已静态编译的 Partial.m 解析，不再嵌入 dylib。
+# libgrabkernel2 的 src/*.m 只包含 grab/appledb/utils；Partial 基类由固定提交
+# 中的 _external/lib/ios/libpartial.a 提供。当前 target 的 Partial.m 仅实现
+# kc_* 快路径，不能替代也不能重复定义 Objective-C Partial 类。
 GRABKERNEL_COMMIT=e015c73aee6c2d3f6b0aad3fa629fe4c0429b7a6
+GRAB_PARTIAL_SHA256=83aea6edd5d538bf72a91ec8feb4847eb2ae99612e56fd9aa61ee9dfccca3241
 GRABKERNEL_DIR="$ROOT/build/deps/libgrabkernel2"
 if [[ ! -d "$GRABKERNEL_DIR/.git" ]]; then
     [[ ! -e "$GRABKERNEL_DIR" ]] || die "libgrabkernel2 依赖目录存在但不是 Git checkout"
@@ -410,6 +412,20 @@ git -C "$GRABKERNEL_DIR" checkout --detach "$GRABKERNEL_COMMIT" >/dev/null 2>&1 
     || die "libgrabkernel2 版本不一致"
 grab_sources=("$GRABKERNEL_DIR"/src/*.m)
 [[ -e "${grab_sources[0]}" ]] || die "libgrabkernel2 源码不完整"
+GRAB_PARTIAL_FAT_ARCHIVE="$GRABKERNEL_DIR/_external/lib/ios/libpartial.a"
+[[ -f "$GRAB_PARTIAL_FAT_ARCHIVE" ]] || die "libgrabkernel2 缺少固定 Partial 静态库"
+[[ "$(shasum -a 256 "$GRAB_PARTIAL_FAT_ARCHIVE" | awk '{print $1}')" == \
+   "$GRAB_PARTIAL_SHA256" ]] || die "libgrabkernel2 Partial 静态库摘要不一致"
+GRAB_PARTIAL_ARCHIVE="$STATIC_DIR/libpartial-arm64e.a"
+xcrun lipo "$GRAB_PARTIAL_FAT_ARCHIVE" -thin arm64e \
+    -output "$GRAB_PARTIAL_ARCHIVE" \
+    || die "无法提取 libpartial arm64e slice"
+GRAB_PARTIAL_SYMBOLS="$(LC_ALL=C xcrun nm -g "$GRAB_PARTIAL_ARCHIVE")"
+GRAB_PARTIAL_CLASS_DEFINITIONS="$(awk \
+    '$NF == "_OBJC_CLASS_$_Partial" && $(NF - 1) != "U" { count++ } END { print count + 0 }' \
+    <<<"$GRAB_PARTIAL_SYMBOLS")"
+[[ "$GRAB_PARTIAL_CLASS_DEFINITIONS" == 1 ]] \
+    || die "libpartial arm64e slice 必须且只能定义一次 Partial 类"
 grab_objects=()
 grab_index=0
 for source in "${grab_sources[@]}"; do
@@ -422,11 +438,17 @@ for source in "${grab_sources[@]}"; do
     grab_objects+=("$object")
     grab_index=$((grab_index + 1))
 done
-xcrun --sdk iphoneos libtool -static -o "$STATIC_DIR/libgrabkernel2.a" "${grab_objects[@]}" \
+xcrun --sdk iphoneos libtool -static -o "$STATIC_DIR/libgrabkernel2.a" \
+    "${grab_objects[@]}" "$GRAB_PARTIAL_ARCHIVE" \
     || die "libgrabkernel2.a 归档失败"
 GRAB_ARCHIVE_SYMBOLS="$(LC_ALL=C xcrun nm -g "$STATIC_DIR/libgrabkernel2.a")"
 grep -q ' _grab_kernelcache$' <<<"$GRAB_ARCHIVE_SYMBOLS" \
     || die "libgrabkernel2.a 缺少 grab_kernelcache"
+GRAB_ARCHIVE_PARTIAL_DEFINITIONS="$(awk \
+    '$NF == "_OBJC_CLASS_$_Partial" && $(NF - 1) != "U" { count++ } END { print count + 0 }' \
+    <<<"$GRAB_ARCHIVE_SYMBOLS")"
+[[ "$GRAB_ARCHIVE_PARTIAL_DEFINITIONS" == 1 ]] \
+    || die "libgrabkernel2.a 中 Partial 类定义数量不唯一"
 ok "XPF 与 libgrabkernel2 静态库已就绪（arm64e / iOS 16.5.1）"
 
 need_files=(
@@ -640,6 +662,11 @@ grep -q ' _xpf_start_with_kernel_path$' <<<"$MAIN_SYMBOLS" \
     || die "主 Mach-O 未静态并入 libxpf"
 grep -q ' _grab_kernelcache$' <<<"$MAIN_SYMBOLS" \
     || die "主 Mach-O 未静态并入 libgrabkernel2"
+MAIN_PARTIAL_CLASS_DEFINITIONS="$(awk \
+    '$NF == "_OBJC_CLASS_$_Partial" && $(NF - 1) != "U" { count++ } END { print count + 0 }' \
+    <<<"$MAIN_SYMBOLS")"
+[[ "$MAIN_PARTIAL_CLASS_DEFINITIONS" == 1 ]] \
+    || die "主 Mach-O 中 Partial 类定义数量不唯一"
 
 # AX 1.2.8 没有 Frameworks 目录，且所有 load command 都指向系统库。
 [[ ! -e "$SRC_APP/Frameworks" ]] || die "最终 App 仍包含 Frameworks 目录"

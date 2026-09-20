@@ -14,11 +14,15 @@ PROJECT_PATH = ROOT / "lara.xcodeproj" / "project.pbxproj"
 INFO_PATH = ROOT / "lara" / "Info.plist"
 MAKEFILE_PATH = ROOT / "vendor" / "XPF" / "Makefile"
 WORKFLOW_PATH = ROOT / ".github" / "workflows" / "build.yml"
+PARTIAL_HEADER_PATH = ROOT / "lara" / "kexploit" / "Partial.h"
+PARTIAL_SOURCE_PATH = ROOT / "lara" / "kexploit" / "Partial.m"
 
 script = SCRIPT_PATH.read_text(encoding="utf-8")
 project = PROJECT_PATH.read_text(encoding="utf-8")
 makefile = MAKEFILE_PATH.read_text(encoding="utf-8")
 workflow = WORKFLOW_PATH.read_text(encoding="utf-8")
+partial_header = PARTIAL_HEADER_PATH.read_text(encoding="utf-8")
+partial_source = PARTIAL_SOURCE_PATH.read_text(encoding="utf-8")
 with INFO_PATH.open("rb") as stream:
     info = plistlib.load(stream)
 
@@ -107,6 +111,24 @@ assert script_xpf_sources == makefile_xpf_sources, (
 assert 'choma_sources=("$CHOMA_DIR"/src/*.c)' in script
 assert 'grab_sources=("$GRABKERNEL_DIR"/src/*.m)' in script
 assert 'GRABKERNEL_COMMIT=e015c73aee6c2d3f6b0aad3fa629fe4c0429b7a6' in script
+assert 'GRAB_PARTIAL_SHA256=83aea6edd5d538bf72a91ec8feb4847eb2ae99612e56fd9aa61ee9dfccca3241' in script
+for token in (
+    'GRAB_PARTIAL_FAT_ARCHIVE="$GRABKERNEL_DIR/_external/lib/ios/libpartial.a"',
+    'xcrun lipo "$GRAB_PARTIAL_FAT_ARCHIVE" -thin arm64e',
+    'GRAB_PARTIAL_SYMBOLS="$(LC_ALL=C xcrun nm -g "$GRAB_PARTIAL_ARCHIVE")"',
+    'GRAB_PARTIAL_CLASS_DEFINITIONS=',
+    '"${grab_objects[@]}" "$GRAB_PARTIAL_ARCHIVE"',
+    'GRAB_ARCHIVE_PARTIAL_DEFINITIONS=',
+    'MAIN_PARTIAL_CLASS_DEFINITIONS=',
+):
+    assert token in script, token
+assert script.count('"_OBJC_CLASS_$_Partial"') == 3
+grab_block = script[script.index('grab_sources=('):script.index('ok "XPF 与 libgrabkernel2 静态库已就绪')]
+assert 'lara/kexploit/Partial.m' not in grab_block
+assert '@interface Partial : NSObject' in partial_header
+assert '@implementation Partial' not in partial_source
+assert 'bool kc_resolve_firmware_url(' in partial_source
+assert 'bool kc_fetch_kernelcache_by_range(' in partial_source
 assert 'CHOMA_COMMIT=b1a4f2debf2aff70edc2825c5cfbd05926d7fc18' in script
 
 
