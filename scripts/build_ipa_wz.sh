@@ -684,10 +684,10 @@ for forbidden in --wzhud-host posix_spawn direct_remote_ WZHUDFloatWindow; do
         && die "最终二进制仍混入已删除的 HUD 路径：$forbidden"
 done
 
-# XPF_EMBEDDED 现在就是主 Mach-O：静态链接后继续用同一反汇编门禁核对 ABI。
-XPF_EMBEDDED="$BIN"
-verify_xpf_binary_layout "$XPF_EMBEDDED" arm64e
-LC_ALL=C grep -a -q -- "arm_maxoffset" "$XPF_EMBEDDED" \
+# 字段偏移已经由两份头文件的编译期断言和上面的独立 arm64/arm64e dylib
+# 指令级门禁覆盖。静态库进入主程序后可能被 LTO/内联/linker relaxation 改写为
+# 不再含直接 #0x110/#0x118 immediate 的等价寻址，不能重复套用 dylib 反汇编形态。
+LC_ALL=C grep -a -q -- "arm_maxoffset" "$BIN" \
     || die "主 Mach-O 缺少 arm_maxoffset 兼容 finder"
 MAIN_SYMBOLS="$(xcrun nm -g "$BIN")"
 grep -q ' _xpf_start_with_kernel_path$' <<<"$MAIN_SYMBOLS" \

@@ -145,6 +145,13 @@ assert script_xpf_sources == makefile_xpf_sources, (
     script_xpf_sources,
     makefile_xpf_sources,
 )
+assert 'verify_xpf_binary_layout "$XPF_DIR/output/ios/libxpf.dylib" arm64 arm64e' in script
+assert 'LC_ALL=C grep -a -q -- "arm_maxoffset" "$BIN"' in script
+assert 'MAIN_SYMBOLS="$(xcrun nm -g "$BIN")"' in script
+assert "XPF_EMBEDDED=" not in script
+assert not re.search(
+    r'verify_xpf_binary_layout\s+"\$(?:BIN|XPF_EMBEDDED)"', script
+)
 
 assert 'choma_sources=("$CHOMA_DIR"/src/*.c)' in script
 assert 'grab_sources=("$GRABKERNEL_DIR"/src/*.m)' in script

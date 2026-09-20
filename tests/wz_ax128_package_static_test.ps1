@@ -116,7 +116,10 @@ foreach ($token in @(
     'GRAB_PARTIAL_CLASS_DEFINITIONS=', 'GRAB_ARCHIVE_PARTIAL_DEFINITIONS=',
     'MAIN_PARTIAL_CLASS_DEFINITIONS=',
     'libxpf.a', 'libgrabkernel2.a', '-miphoneos-version-min=16.5.1',
-    'XPF_EMBEDDED="$BIN"', 'verify_xpf_binary_layout "$XPF_EMBEDDED" arm64e',
+    '-DXPF_LAYOUT_ONLY "$ROOT/tests/xpf_ax128_layout_test.c"',
+    'verify_xpf_binary_layout "$XPF_DIR/output/ios/libxpf.dylib" arm64 arm64e',
+    'LC_ALL=C grep -a -q -- "arm_maxoffset" "$BIN"',
+    'MAIN_SYMBOLS="$(xcrun nm -g "$BIN")"',
     '主 Mach-O 未静态并入 libxpf', '主 Mach-O 未静态并入 libgrabkernel2',
     'NON_SYSTEM_LOADS=', 'cmd LC_RPATH', '[[ ! -e "$SRC_APP/Frameworks" ]]',
     'root = pathlib.Path(sys.argv[1])', 'unexpected root directories',
@@ -149,7 +152,8 @@ foreach ($token in @(
     '"sourceManifestSha256": "$SOURCE_MANIFEST_SHA256"',
     'shasum -a 256 -c "${CHECKSUM_MANIFEST##*/}"'
 )) { Require-Literal $build $token 'AX final-product gate missing' }
-Reject-Pattern $build 'XPF_EMBEDDED="\$SRC_APP/Frameworks|@executable_path/Frameworks/libxpf|cp\s+"\$XPF_DIR/output/ios/libxpf\.dylib"' 'build script still ships XPF dynamically'
+Reject-Pattern $build '@executable_path/Frameworks/libxpf|cp\s+"\$XPF_DIR/output/ios/libxpf\.dylib"' 'build script still ships XPF dynamically'
+Reject-Pattern $build 'XPF_EMBEDDED=|verify_xpf_binary_layout\s+"\$(BIN|XPF_EMBEDDED)"' 'final main Mach-O still uses the dylib instruction-shape verifier'
 Reject-Pattern $build 'create_local_hosting_controller' 'release gate still relies on a static C++ source-function name'
 Require-Count $build 'rm -rf -- "\$target"' 1 'recursive cleanup must be centralized in reset_build_dir'
 Reject-Pattern $build 'rm -rf(?! -- "\$target")' 'unguarded recursive cleanup remains'
