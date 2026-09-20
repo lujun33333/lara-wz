@@ -76,6 +76,24 @@ assert script.index("SOURCE_STATUS=$(git") < script.index('mkdir -p "$ROOT/build
 assert script.index("SOURCE_MANIFEST_TMP=") < script.index("say \"从源码构建并静态链接")
 
 for token in (
+    'MAIN_SYMBOLS="$(LC_ALL=C xcrun nm -g "$BIN")"',
+    "_wzhud_local_hosting_ready",
+    "_wzhud_register_springboard_hosts",
+    "_wzhud_unregister_springboard_hosts",
+    "'_OBJC_CLASS_$_WZHUDDrawWindow'",
+    "'_OBJC_CLASS_$_WZHUDMenuWindow'",
+    'HOSTING_OBJC_METADATA="$(LC_ALL=C xcrun otool -ov "$BIN")"',
+    'HOSTING_RUNTIME_STRINGS="$(LC_ALL=C xcrun strings -a "$BIN")"',
+    '$(NF - 1) != "U"',
+    'grep -Fqx -- "$marker"',
+    "最终 Mach-O 缺少已定义托管符号",
+    "最终 Mach-O 缺少托管运行时证据",
+):
+    assert token in script, token
+assert script.count('MAIN_SYMBOLS="$(LC_ALL=C xcrun nm -g "$BIN")"') == 1
+assert "create_local_hosting_controller" not in script
+
+for token in (
     "command -v codesign",
     "codesign --force --sign - --timestamp=none",
     '--entitlements "$ROOT/Config/lara.entitlements"',
