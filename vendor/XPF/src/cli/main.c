@@ -7,9 +7,7 @@ int main(int argc, char *argv[]) {
 
 	}
 	else {
-		const char *sptmPath = argc >= 3 ? argv[2] : NULL;
-		const char *txmPath = argc >= 4 ? argv[3] : NULL;
-		if (xpf_start_with_kernel_path(argv[1], sptmPath, txmPath) == 0) {
+		if (xpf_start_with_kernel_path(argv[1]) == 0) {
 			printf("Starting XPF with %s (%s)\n", argv[1], gXPF.kernelVersionString);
 			clock_t t = clock();
 

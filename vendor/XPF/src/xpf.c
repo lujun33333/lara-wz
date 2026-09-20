@@ -523,73 +523,15 @@ static void xpf_copy_path(char *dst, size_t cap, const char *src)
 	dst[i] = '\0';
 }
 
-int xpf_start_with_kernel_path(const char *kernelPath, const char *optSptmPath, const char *optTxmPath)
+int xpf_start_with_kernel_path(const char *kernelPath)
 {
-	// Copy every path into static storage before touching anything else. On
-	// device the path string handed in was found destroyed by the time the SPTM
-	// image was loaded ("[e] im4p_direct: cannot open xM"), so neither the
-	// caller's storage nor the heap can be trusted across the work below: static
-	// buffers are not reachable by a heap stomp, and copying here also happens
-	// before anything could release a temporary string view.
+	// AX 1.2.8 exposes a single-argument entry point. Keep the exported ABI in
+	// lockstep with Lara's declaration and callers so x1/x2 can never be
+	// interpreted as optional image paths.
 	static char kernelPathCopy[XPF_PATH_MAX];
-	static char sptmPathCopy[XPF_PATH_MAX];
-	static char txmPathCopy[XPF_PATH_MAX];
 	if (kernelPath) {
 		xpf_copy_path(kernelPathCopy, sizeof(kernelPathCopy), kernelPath);
 		kernelPath = kernelPathCopy;
-	}
-	if (optSptmPath) {
-		xpf_copy_path(sptmPathCopy, sizeof(sptmPathCopy), optSptmPath);
-		optSptmPath = sptmPathCopy;
-	}
-	if (optTxmPath) {
-		xpf_copy_path(txmPathCopy, sizeof(txmPathCopy), optTxmPath);
-		optTxmPath = txmPathCopy;
-	}
-
-	// Record what this call actually received. On device the SPTM path had
-	// become the literal "release" by the time the image was loaded, so the value
-	// at entry (pointer plus tail) has to be in the log to tell "the caller sent
-	// it" from "something overwrote it here".
-	{
-		char note[192];
-		const char *sptmTail = optSptmPath ? optSptmPath : "(none)";
-		const char *txmTail = optTxmPath ? optTxmPath : "(none)";
-		size_t sptmLen = strlen(sptmTail), txmLen = strlen(txmTail);
-		if (sptmLen > 28) sptmTail += sptmLen - 28;
-		if (txmLen > 28) txmTail += txmLen - 28;
-		snprintf(note, sizeof(note), "entry sptm=%p..%s txm=%p..%s", (void *)optSptmPath, sptmTail,
-		         (void *)optTxmPath, txmTail);
-		xpf_img4_diag(note);
-	}
-
-	if (optSptmPath) {
-		if (xpf_load_img4(optSptmPath, &gXPF.decompressedSptm, &gXPF.decompressedSptmSize) != 0) {
-			xpf_set_error("Failed to load / decompress SPTM");
-			return -1;
-		}
-
-		MemoryStream *stream = buffered_stream_init_from_buffer_nocopy(gXPF.decompressedSptm, gXPF.decompressedSptmSize, 0);
-		gXPF.sptmContainer = fat_init_from_memory_stream(stream);
-		gXPF.sptm = fat_get_single_slice(gXPF.sptmContainer);
-		gXPF.sptmBase = macho_get_base_address(gXPF.sptm);
-
-		gXPF.sptmTextSection = xpf_sptm_pfsec_init("__TEXT_EXEC", "__text");
-		gXPF.sptmStringSection = xpf_sptm_pfsec_init("__TEXT", "__cstring");
-	}
-	if (optTxmPath) {
-		if (xpf_load_img4(optTxmPath, &gXPF.decompressedTxm, &gXPF.decompressedTxmSize) != 0) {
-			xpf_set_error("Failed to load / decompress TXM");
-			return -1;
-		}
-
-		MemoryStream *stream = buffered_stream_init_from_buffer_nocopy(gXPF.decompressedTxm, gXPF.decompressedTxmSize, 0);
-		gXPF.txmContainer = fat_init_from_memory_stream(stream);
-		gXPF.txm = fat_get_single_slice(gXPF.txmContainer);
-		gXPF.txmBase = macho_get_base_address(gXPF.txm);
-
-		gXPF.txmTextSection = xpf_txm_pfsec_init("__TEXT_EXEC", "__text");
-		gXPF.txmStringSection = xpf_txm_pfsec_init("__TEXT", "__cstring");
 	}
 	gXPF.kernelFd = open(kernelPath, O_RDONLY);
 	if (gXPF.kernelFd < 0) {

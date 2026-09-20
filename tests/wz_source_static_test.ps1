@@ -192,6 +192,22 @@ Reject-Text 'lara/kexploit/offsets.m' '拒绝以静态兜底值继续' 'offsets 
 Require-Text 'lara/kexploit/offsets.m' '\(void\)isA16Above;' 'CPU 家族分类结果未明确标注为诊断用途'
 
 # ── 底层：XPF 解析策略对齐 AX（正规字典入口优先，逐项仅作兜底）───────────
+# AX 1.2.8 的公开入口和实现都是单参数；三参数新版会把 Lara 未初始化的
+# x1/x2 当成 SPTM/TXM 路径并在启动时解引用。
+Require-Text 'lara/headers/xpf.h' 'int xpf_start_with_kernel_path\(const char \*kernelPath\);' 'Lara 侧 XPF 声明不是 AX 单参数 ABI'
+Require-Text 'vendor/XPF/src/xpf.h' 'int xpf_start_with_kernel_path\(const char \*kernelPath\);' 'vendor XPF 声明不是 AX 单参数 ABI'
+Require-Text 'vendor/XPF/src/xpf.c' 'int xpf_start_with_kernel_path\(const char \*kernelPath\)[\s\r\n]*\{' 'vendor XPF 实现不是 AX 单参数 ABI'
+foreach ($xpfSource in @(
+    'lara/headers/xpf.h',
+    'lara/kexploit/offsets.m',
+    'lara/kexploit/utils.m',
+    'vendor/XPF/src/xpf.h',
+    'vendor/XPF/src/xpf.c',
+    'vendor/XPF/src/cli/main.c'
+)) {
+    Reject-Text $xpfSource 'xpf_start_with_kernel_path\s*\([^\)\r\n]*,' '仍存在多参数 XPF 声明、实现或调用'
+}
+Require-Text 'scripts/build_ipa_wz.sh' '拒绝构建 ABI 混用产物' '出货构建未阻止 XPF 单/三参数 ABI 混用'
 Require-Text 'lara/kexploit/xpfitems.m' 'static const char \*kAXSets\[\] = \{ "base", "translation", "physmap", NULL \}' '缺少 AX 的三组字典集合'
 Require-Text 'lara/kexploit/xpfitems.m' 'xpf_construct_offset_dictionary\(kAXSets\)' '未走 XPF 正规字典入口'
 Require-Text 'lara/kexploit/xpfitems.m' 'xpc_dictionary_get_uint64\(dict, "kernelConstant.T1SZ_BOOT"\)' '未从字典取 T1SZ_BOOT'

@@ -24,7 +24,7 @@ typedef struct s_XPFSet {
 
 #define XPF_ASSERT(assert) if (!(assert)) { if (!xpf_get_error()) { xpf_set_error("[%s:%d] Failed assert in %s: %s", __FILE__, __LINE__, __FUNCTION__, #assert); } return 0; }
 
-int xpf_start_with_kernel_path(const char *kernelPath, const char *optSptmPath, const char *optTxmPath);
+int xpf_start_with_kernel_path(const char *kernelPath);
 void xpf_item_register(const char *name, void *finder, void *ctx);
 uint64_t xpf_item_resolve(const char *name);
 uint64_t xpfsec_decode_pointer(PFSection *section, uint64_t vmaddr, uint64_t value);

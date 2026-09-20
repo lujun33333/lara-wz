@@ -33,6 +33,24 @@ say "从源码构建 libxpf.dylib ..."
 XPF_DIR="$ROOT/vendor/XPF"
 [ -f "$XPF_DIR/src/common.c" ] || die "缺少 vendor/XPF/src"
 [ -f "$XPF_DIR/Makefile" ]     || die "缺少 vendor/XPF/Makefile"
+# AX 1.2.8 的入口只接收 kernelcache。Lara 侧同样只传一个参数，因此在编译
+# 出货 dylib 前强制核对声明、实现和全部调用，禁止再次混入三参数 ABI。
+XPF_SINGLE_DECL='int xpf_start_with_kernel_path(const char *kernelPath);'
+LC_ALL=C grep -Fqx -- "$XPF_SINGLE_DECL" "$ROOT/lara/headers/xpf.h" \
+    || die "Lara 的 XPF 声明不是 AX 1.2.8 单参数 ABI"
+LC_ALL=C grep -Fqx -- "$XPF_SINGLE_DECL" "$XPF_DIR/src/xpf.h" \
+    || die "vendor/XPF 的公开声明不是 AX 1.2.8 单参数 ABI"
+LC_ALL=C grep -Fqx -- 'int xpf_start_with_kernel_path(const char *kernelPath)' "$XPF_DIR/src/xpf.c" \
+    || die "vendor/XPF 的实现不是 AX 1.2.8 单参数 ABI"
+if LC_ALL=C grep -nE 'xpf_start_with_kernel_path[[:space:]]*\([^)]*,' \
+        "$ROOT/lara/headers/xpf.h" \
+        "$ROOT/lara/kexploit/offsets.m" \
+        "$ROOT/lara/kexploit/utils.m" \
+        "$XPF_DIR/src/xpf.h" \
+        "$XPF_DIR/src/xpf.c" \
+        "$XPF_DIR/src/cli/main.c"; then
+    die "检测到多参数 xpf_start_with_kernel_path，拒绝构建 ABI 混用产物"
+fi
 if [ ! -d "$XPF_DIR/external/ChOma/src" ]; then
     say "拉取 ChOma 子模块 ..."
     rm -rf "$XPF_DIR/external/ChOma"
