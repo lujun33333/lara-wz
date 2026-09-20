@@ -3,21 +3,22 @@ $root = Split-Path -Parent $PSScriptRoot
 $source = Get-Content -LiteralPath (Join-Path $root 'lara/kexploit/WZHUDBridge.mm') -Raw -Encoding UTF8
 $project = Get-Content -LiteralPath (Join-Path $root 'lara.xcodeproj/project.pbxproj') -Raw -Encoding UTF8
 $imguiRoot = Join-Path $root 'lara/third_party/imgui'
+$pinnedCommit = '59db6ceeb15ea7b685c2564a7bc889fd5ba7eef9'
 
 $pinnedFiles = [ordered]@{
-    'imgui.h' = 'cfb1ad68fc69fba743aafc5b446b4d5e9137948a45019fdb94231db11e9dd6eb'
-    'imconfig.h' = '6e5687893594ebfaf8569280cfea83d025904a8a4e23bec073086f6c5bc8f7fb'
-    'imgui_internal.h' = '77ede7b9745dc81b93e4509e5da4c309df31b1862298853df8cfe24fc03d2634'
-    'imstb_rectpack.h' = '2efa3d5f7d003c19743b15155dad9f46d9f9fc783a18893d703b431d3c990972'
-    'imstb_textedit.h' = 'a985f5fa0ed97353d493b497961e9eef52082edcd045cf6954b69990ec9d0741'
-    'imstb_truetype.h' = '88f0a25e27f5eefd6ec50c42fc5fe3026aa8170603efa08aa18d622db8660923'
-    'imgui.cpp' = '3799eaad52055fe999d2e984df242d6ff418177ebd533994f6d0025d00605acd'
-    'imgui_draw.cpp' = 'c04a6abc385b2bc0ea1012f2e165eec0f8619acb66b494de52a56e7274bee1bc'
-    'imgui_tables.cpp' = '00827be09da0c458d55c1e5383c56909c4cf6ae86c4f8c7f50ee2bb407cd8106'
-    'imgui_widgets.cpp' = '76c93645fc873f46957c07c60ce818860645951f1785e3cd4d9631b78c30283d'
-    'LICENSE.txt' = 'c80c5789748d955c4a650562baa0d750494e2c7128c2ca66aaebe2e3c4e198bf'
-    'backends/imgui_impl_metal.h' = '0d542dd0147b7dfc767008da0eb9fca22ac579988c63cc302a23d149264159d2'
-    'backends/imgui_impl_metal.mm' = 'c04fab400207a331ac86a1c8f6179d5d70a543aecf06ac93f69fb8e18af18765'
+    'imgui.h' = 'bd9351d64c51cf89587ef75ab79b76ca3171d3715b1fb764ac610b660c973a51'
+    'imconfig.h' = 'fb8e32b9af9aa7dad5ec5c5bc862537f5624cb39a814e6d3b36b4629a50b6599'
+    'imgui_internal.h' = '9234d6b459d1976870e29d8cbd505bb9b41728af107d03219c1454248ab717f8'
+    'imstb_rectpack.h' = 'bb53504995e983d54b1ae06ea727f0b39647e5e205b4bf7da01343953974951c'
+    'imstb_textedit.h' = '24a8db00354af8f4057417841635a1b6dfd8986f1608336fe6f10d6fd9769aaa'
+    'imstb_truetype.h' = '37aa1d602706262bf94da2f83efaa8175ebc2202ede13da96b692fbcf8b4427b'
+    'imgui.cpp' = '859ae782e8485e2927155a263cf2430a14b1d43078b223d2e9995f69bb31185c'
+    'imgui_draw.cpp' = '27c33995dc29a5de21705a45f037c473837709363b44ded8c1217ff982aad903'
+    'imgui_tables.cpp' = '22a64f848d0c047823f492941ffe4a22aeaea71440c74736f4fbf7a2b6a9dc4f'
+    'imgui_widgets.cpp' = '32d89fe88d2e3b19c2e4b713c8df2b0bbbefd116a49f36818ee2726703e6e6de'
+    'LICENSE.txt' = '55e058cc5899e6077a819ad1005d6d1f4528f65ae100795c9692f9fa6525a8ce'
+    'backends/imgui_impl_metal.h' = '118e7c5f13c85b2af32d76139f6eb08a0d8dc0f97d42f8b85c9d401d8d288ec9'
+    'backends/imgui_impl_metal.mm' = '792761402be6d638b42dd95afb17033aeabbfe4ec523a961d325fa581c4ce925'
 }
 foreach ($entry in $pinnedFiles.GetEnumerator()) {
     $path = Join-Path $imguiRoot $entry.Key
@@ -27,10 +28,17 @@ foreach ($entry in $pinnedFiles.GetEnumerator()) {
 }
 
 $imgui = Get-Content -LiteralPath (Join-Path $imguiRoot 'imgui.h') -Raw -Encoding UTF8
+$imconfig = Get-Content -LiteralPath (Join-Path $imguiRoot 'imconfig.h') -Raw -Encoding UTF8
 $backend = Get-Content -LiteralPath (Join-Path $imguiRoot 'backends/imgui_impl_metal.mm') -Raw -Encoding UTF8
 if ($imgui -notmatch '#define IMGUI_VERSION\s+"1\.92\.5 WIP"' -or
-    $imgui -notmatch '#define IMGUI_VERSION_NUM\s+19248') {
+    $imgui -notmatch '#define IMGUI_VERSION_NUM\s+19243') {
     throw 'FAIL: vendored Dear ImGui version is not the pinned 1.92.5 WIP snapshot'
+}
+if ($imgui -match 'DragDropTargetRect(Rounding|LineThickness|ExpansionSize)|ImGuiCol_DragDropTargetBg') {
+    throw 'FAIL: post-59db6cee drag-drop style fields inflate ImGuiStyle beyond AX ABI 0x4ec'
+}
+if ($imconfig -match '(?m)^\s*#define\s+(IMGUI_USE_WCHAR32|IMGUI_DISABLE_OBSOLETE_FUNCTIONS|ImDrawIdx|ImTextureID)\b') {
+    throw 'FAIL: vendored ImGui ABI configuration is not the upstream default used by AX'
 }
 if ($imgui -notmatch 'typedef unsigned short ImDrawIdx' -or
     $imgui -notmatch 'struct ImDrawVert[\s\S]{0,180}ImVec2\s+pos;[\s\S]{0,80}ImVec2\s+uv;[\s\S]{0,80}ImU32\s+col;') {
@@ -93,4 +101,4 @@ if ($project -notmatch 'PBXFileSystemSynchronizedRootGroup[\s\S]{0,300}path = la
     throw 'FAIL: vendored ImGui sources are not covered by the synchronized lara source group'
 }
 
-Write-Output 'PASS: pinned ImGui 1.92.5 WIP snapshot, ABI/layout and Metal draw-data contracts'
+Write-Output "PASS: pinned ImGui 1.92.5 WIP snapshot $pinnedCommit, ABI/layout and Metal draw-data contracts"

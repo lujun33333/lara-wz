@@ -10,7 +10,7 @@
 |---|---|---|---|
 | 0x10076d234 | configureHostedBackgroundMetalLayer | equivalent | MTKView CAMetalLayer mask18/nextDrawableTimeout:YES |
 | 0x1007723f0 | configureHostedBackgroundLayerHierarchy | implemented | ax_enable_hosted_layer；host/ancestor/window/root layer mask18 |
-| 0x100774430 | initWithFrame: | equivalent | CA command pool、WZAXMetalRenderer/MTKView/queue、Dear ImGui 1.92.5 WIP context 与官方 Metal backend 初始化；Rajdhani Bold OTF 以 18px+默认 0x20..0xff glyph range 装载；WIP 核心快照固定为 4ab86e1 |
+| 0x100774430 | initWithFrame: | equivalent | CA command pool、WZAXMetalRenderer/MTKView/queue、Dear ImGui 1.92.5 WIP context 与官方 Metal backend 初始化；Rajdhani Bold OTF 以 18px+默认 0x20..0xff glyph range 装载；WIP 快照固定为 `59db6ceeb15ea7b685c2564a7bc889fd5ba7eef9` |
 | 0x100783c60 | didMoveToWindow | equivalent | 窗口安装路径configure_layer_renderer_main及方向同步；需设备检查 |
 | 0x100784384 | mtkView:drawableSizeWillChange: | equivalent | MTK delegate接入；每帧从drawable及逻辑bounds计算NDC |
 | 0x1007864d4 | drawInMTKView: | equivalent | WZAXMetalRenderer 固定 DeltaTime 后执行 ImGui NewFrame/Render，并由 ImGui_ImplMetal_RenderDrawData 提交 render encoder/drawable/command buffer |
@@ -67,6 +67,6 @@
 | 0x1007f7204 | .cxx_destruct | equivalent | ARC释放CA/Metal/view/queue/cache；MTKdelegate销毁前置nil |
 | 0x100773e08 | bgh4fdqt | equivalent | 屏幕bounds创建hosted绘制根；原helper非singleton |
 
-双后端等价边界：前台直接从 `wzesp_item_t` snapshot 生成 Dear ImGui 1.92.5 WIP draw-data，并使用官方 Metal backend（动态 font atlas、ImDrawVert 20 字节、ImDrawIdx 16 位、backend scissor/texture/pipeline/blend）；后台保留独立 UIKit/retained CA 消费。ImGui DeltaTime 固定为 0.01666666753590107，context/动画 Time 从 0 按该步长推进。参考二进制只足以把版本锁到 `1.92.5 WIP` 和 ABI/编译特征；上游 WIP 的精确提交号无法从 Mach-O 唯一定出，因此采用正式 1.92.5 前最后一个改动核心代码的提交 4ab86e1，并以 SHA256 固定所有 vendored 文件。未进行 iOS 构建、真机或像素比对，equivalent 不代表像素完全一致。
+双后端等价边界：前台直接从 `wzesp_item_t` snapshot 生成 Dear ImGui 1.92.5 WIP draw-data，并使用官方 Metal backend（动态 font atlas、ImDrawVert 20 字节、ImDrawIdx 16 位、backend scissor/texture/pipeline/blend）；后台保留独立 UIKit/retained CA 消费。ImGui DeltaTime 固定为 0.01666666753590107，context/动画 Time 从 0 按该步长推进。参考二进制将版本锁到 `1.92.5 WIP`，并将 ABI 锁到 ImGuiIO `0xbd8`、ImGuiStyle `0x4ec`、ImDrawVert `0x14`、ImDrawIdx 2 字节和 ImTextureID 8 字节。当前固定官方提交 `59db6ceeb15ea7b685c2564a7bc889fd5ba7eef9`：它是上游加入会把 ImGuiStyle 增至 `0x508` 的 drag-drop 样式字段之前最后一个提交；vendored 文件均以 SHA256 门禁。仅凭 Mach-O 不能在所有相同 ABI 的早期 WIP 提交中反推出唯一源码提交。未进行 iOS 构建、真机或像素比对，equivalent 不代表像素完全一致。
 
 野怪消费补证：0x1007ab460 对 slot 清低位，0x1007ab464/484/4a0 比较 18/16；19、20 条模拟记录均仅生成前16槽位图元。0/8蓝、4/12红，其余白；特殊点半径 mapsize/51+1，其余 mapsize/51。record+4 非0时改为 snprintf("%d")，0/4/8/12黄字、其余白字（0x1007acab4 固定黄色；0x1007ad314 使用分支颜色参数）。对 1、999、1000、-1 均观察到文字分支，无旧1..999门禁。文字位置为 minimap-(mapsize/52,mapsize/52)，字号 mapsize/26*1.9。实验仅桩化生产端刷新与外部UIKit调用，原绘制消费逻辑在Unicorn执行；不能代替真机绘制验证。
