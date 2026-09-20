@@ -200,8 +200,13 @@ assert exceptions == {
     "AXReference.bundle",
     "Info.plist",
     "assets",
+    "assets/lara.png",
     "lib/libgrabkernel2.dylib",
     "lib/libxpf.dylib",
+    "licenses/LICENSE_ChOma.md",
+    "licenses/LICENSE_RootHideManagerApp.md",
+    "licenses/LICENSE_XPF.md",
+    "licenses/LICENSE_libgrabkernel2.md",
     "other/VarCleanRules.json",
     "other/media.xcassets",
     "third_party/imgui/LICENSE.txt",
@@ -230,6 +235,7 @@ for token in (
     "SUPPORTED_PLATFORMS = iphoneos;",
     'LD_RUNPATH_SEARCH_PATHS = "";',
     '"-Wl,-headerpad_max_install_names"',
+    "GENERATE_PKGINFO_FILE = NO;",
 ):
     assert project.count(token) == 2, token
 assert "LIBRARY_SEARCH_PATHS" not in project

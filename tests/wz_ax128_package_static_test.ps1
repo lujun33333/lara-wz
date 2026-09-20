@@ -86,6 +86,7 @@ Require-Count $project 'PRODUCT_BUNDLE_IDENTIFIER = com\.ax\.ax;' 2 'target bund
 Require-Count $project 'PRODUCT_NAME = "AX Pro";' 2 'product name is not AX Pro in both configurations'
 Require-Count $project 'EXECUTABLE_NAME = "AX Pro";' 2 'executable name is not AX Pro in both configurations'
 Require-Count $project 'SUPPORTED_PLATFORMS = iphoneos;' 2 'target must only advertise the device platform used by arm64e static archives'
+Require-Count $project 'GENERATE_PKGINFO_FILE = NO;' 2 'target must not generate reference-absent PkgInfo'
 Require-Count $project 'LD_RUNPATH_SEARCH_PATHS = "";' 2 'target runpath setting must be empty in both configurations'
 Require-Count $project '-Wl,-headerpad_max_install_names' 2 'target must reserve load-command space for Swift system-path normalization'
 Require-Count $project '-Wl,-force_load,\$\(SRCROOT\)/build/static-ios/libxpf\.a' 2 'libxpf static force-load missing'
@@ -95,6 +96,9 @@ foreach ($token in @(
     'Assets.car in Resources',
     'path = lara/AXReference.bundle/Assets.car; sourceTree = SOURCE_ROOT',
     'AXReference.bundle,', 'assets,', 'other/VarCleanRules.json,', 'other/media.xcassets,',
+    'assets/lara.png,',
+    'licenses/LICENSE_ChOma.md,', 'licenses/LICENSE_RootHideManagerApp.md,',
+    'licenses/LICENSE_XPF.md,', 'licenses/LICENSE_libgrabkernel2.md,',
     'LD_RUNPATH_SEARCH_PATHS = "";'
 )) { Require-Literal $project $token 'AX package project setting missing' }
 Reject-Pattern $project 'compiled\.mach-o\.dylib|in Embed Frameworks|Force Sign Embedded Dylibs' 'dynamic XPF/grabkernel embedding remains'
@@ -106,7 +110,7 @@ $resourceEnd = $project.IndexOf('/* End PBXResourcesBuildPhase section */', [Str
 if ($resourceStart -lt 0 -or $resourceEnd -le $resourceStart) { throw 'FAIL: resources phase missing' }
 $resourcePhase = $project.Substring($resourceStart, $resourceEnd - $resourceStart)
 Require-Literal $resourcePhase 'Assets.car in Resources' 'reference Assets.car is not copied to the main bundle root'
-Reject-Pattern $resourcePhase 'materialrecipe|visualstyleset|HomeBarAssets|media\.xcassets' 'reference-absent resources remain in build phase'
+Reject-Pattern $resourcePhase 'materialrecipe|visualstyleset|HomeBarAssets|media\.xcassets|lara\.png|LICENSE_' 'reference-absent resources remain in build phase'
 
 foreach ($token in @(
     'PRODUCT_NAME="AX Pro"',

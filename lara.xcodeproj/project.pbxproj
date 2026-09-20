@@ -65,8 +65,13 @@
 				AXReference.bundle,
 				Info.plist,
 				assets,
+				assets/lara.png,
 				lib/libgrabkernel2.dylib,
 				lib/libxpf.dylib,
+				licenses/LICENSE_ChOma.md,
+				licenses/LICENSE_RootHideManagerApp.md,
+				licenses/LICENSE_XPF.md,
+				licenses/LICENSE_libgrabkernel2.md,
 				other/VarCleanRules.json,
 				other/media.xcassets,
 				third_party/imgui/LICENSE.txt,
@@ -457,6 +462,7 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = YES;
+				GENERATE_PKGINFO_FILE = NO;
 				HEADER_SEARCH_PATHS = (
 					"$(inherited)",
 					"$(SRCROOT)/lara",
@@ -505,6 +511,7 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = YES;
+				GENERATE_PKGINFO_FILE = NO;
 				HEADER_SEARCH_PATHS = (
 					"$(inherited)",
 					"$(SRCROOT)/lara",
