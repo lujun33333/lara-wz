@@ -602,6 +602,42 @@ for forbidden in (
         raise SystemExit(f"forbidden extra plist key: {forbidden}")
 PY
 
+# Xcode 26 的 Swift 链接动作会在 LD_RUNPATH_SEARCH_PATHS 已为空时仍自动加入
+# /usr/lib/swift LC_RPATH。先把可能的 @rpath/libswift*.dylib load command
+# 改为 iOS 16.5.1 已提供的系统绝对路径，再删除这个冗余 rpath。修改发生在
+# 最终 codesign 之前；OTHER_LDFLAGS 的 headerpad 为 install_name_tool 预留空间。
+SWIFT_RPATH_LOADS="$(xcrun otool -L "$BIN" | tail -n +2 | awk '{print $1}' \
+    | grep -E '^@rpath/libswift[^/]*\.dylib$' || true)"
+if [[ -n "$SWIFT_RPATH_LOADS" ]]; then
+    while IFS= read -r old_load; do
+        [[ -n "$old_load" ]] || continue
+        system_load="/usr/lib/swift/${old_load#@rpath/}"
+        xcrun install_name_tool -change "$old_load" "$system_load" "$BIN" \
+            || die "无法把 Swift runtime load command 改为系统路径：$old_load"
+    done <<<"$SWIFT_RPATH_LOADS"
+fi
+MAIN_RPATHS_BEFORE="$(xcrun otool -l "$BIN" | awk '
+    $1 == "cmd" { in_rpath = ($2 == "LC_RPATH"); next }
+    in_rpath && $1 == "path" { print $2; in_rpath = 0 }
+')"
+if grep -Fxq -- /usr/lib/swift <<<"$MAIN_RPATHS_BEFORE"; then
+    xcrun install_name_tool -delete_rpath /usr/lib/swift "$BIN" \
+        || die "无法删除 Xcode 自动注入的 /usr/lib/swift LC_RPATH"
+fi
+MAIN_DYLIB_LOADS="$(xcrun otool -L "$BIN" | tail -n +2 | awk '{print $1}')"
+SYSTEM_SWIFT_LOADS="$(grep -E '^/usr/lib/swift/libswift[^/]*\.dylib$' \
+    <<<"$MAIN_DYLIB_LOADS" || true)"
+NON_SYSTEM_SWIFT_LOADS="$(grep -E '(^|/)libswift[^/]*\.dylib$' \
+    <<<"$MAIN_DYLIB_LOADS" | grep -Ev '^/usr/lib/swift/' || true)"
+[[ -n "$SYSTEM_SWIFT_LOADS" ]] \
+    || die "最终主 Mach-O 未链接 iOS 系统 Swift runtime"
+[[ -z "$NON_SYSTEM_SWIFT_LOADS" ]] \
+    || die "最终主 Mach-O 仍有非系统 Swift runtime load command：$NON_SYSTEM_SWIFT_LOADS"
+NORMALIZED_LOAD_COMMANDS="$(xcrun otool -l "$BIN")"
+if grep -q 'cmd LC_RPATH' <<<"$NORMALIZED_LOAD_COMMANDS"; then
+    die "Swift runtime 规范化后主 Mach-O 仍包含 LC_RPATH"
+fi
+
 say "使用 AX 本地双窗口权限对 App bundle 做 ad-hoc codesign（纯进程内托管，无 SpringBoard 注入）..."
 # Info.plist 和全部 bundle 资源必须先固定，再由 codesign 同时签主 Mach-O、写入
 # 当前完整 entitlement 集并生成与最终资源匹配的 _CodeSignature/CodeResources。

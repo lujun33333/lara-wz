@@ -87,11 +87,19 @@ for token in (
     "missing signed entitlement keys",
     "mismatched signed entitlement values",
     'codesign --verify --strict --verbose=2 "$SRC_APP"',
+    'SWIFT_RPATH_LOADS="$(xcrun otool -L "$BIN"',
+    'xcrun install_name_tool -change "$old_load" "$system_load" "$BIN"',
+    'xcrun install_name_tool -delete_rpath /usr/lib/swift "$BIN"',
+    "SYSTEM_SWIFT_LOADS=",
+    "NON_SYSTEM_SWIFT_LOADS=",
+    "最终主 Mach-O 未链接 iOS 系统 Swift runtime",
+    "Swift runtime 规范化后主 Mach-O 仍包含 LC_RPATH",
 ):
     assert token in script, token
 assert not re.search(r"(?im)^\s*(?:command\s+-v|brew\s+install)\s+ldid\b|^\s*ldid\s+-S", script)
 plist_cleanup = script.index("/usr/libexec/PlistBuddy -c 'Delete :LARABuildSourceCommit'")
 plist_validation = script.index('python3 - "$INFO_PLIST"')
+swift_normalize = script.index('SWIFT_RPATH_LOADS="$(xcrun otool -L "$BIN"')
 bundle_sign = script.index("codesign --force --sign - --timestamp=none")
 entitlement_read = script.index('codesign -d --entitlements :- "$BIN"')
 entitlement_compare = script.index(
@@ -101,6 +109,7 @@ bundle_verify = script.index('codesign --verify --strict --verbose=2 "$SRC_APP"'
 assert (
     plist_cleanup
     < plist_validation
+    < swift_normalize
     < bundle_sign
     < entitlement_read
     < entitlement_compare
@@ -219,6 +228,8 @@ for token in (
     '"-Wl,-force_load,$(SRCROOT)/build/static-ios/libxpf.a"',
     '"-Wl,-force_load,$(SRCROOT)/build/static-ios/libgrabkernel2.a"',
     "SUPPORTED_PLATFORMS = iphoneos;",
+    'LD_RUNPATH_SEARCH_PATHS = "";',
+    '"-Wl,-headerpad_max_install_names"',
 ):
     assert project.count(token) == 2, token
 assert "LIBRARY_SEARCH_PATHS" not in project

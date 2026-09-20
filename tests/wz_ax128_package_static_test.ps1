@@ -86,6 +86,8 @@ Require-Count $project 'PRODUCT_BUNDLE_IDENTIFIER = com\.ax\.ax;' 2 'target bund
 Require-Count $project 'PRODUCT_NAME = "AX Pro";' 2 'product name is not AX Pro in both configurations'
 Require-Count $project 'EXECUTABLE_NAME = "AX Pro";' 2 'executable name is not AX Pro in both configurations'
 Require-Count $project 'SUPPORTED_PLATFORMS = iphoneos;' 2 'target must only advertise the device platform used by arm64e static archives'
+Require-Count $project 'LD_RUNPATH_SEARCH_PATHS = "";' 2 'target runpath setting must be empty in both configurations'
+Require-Count $project '-Wl,-headerpad_max_install_names' 2 'target must reserve load-command space for Swift system-path normalization'
 Require-Count $project '-Wl,-force_load,\$\(SRCROOT\)/build/static-ios/libxpf\.a' 2 'libxpf static force-load missing'
 Require-Count $project '-Wl,-force_load,\$\(SRCROOT\)/build/static-ios/libgrabkernel2\.a' 2 'libgrabkernel2 static force-load missing'
 foreach ($token in @(
@@ -137,6 +139,12 @@ foreach ($token in @(
     'python3 - "$ROOT/Config/lara.entitlements" "$SIGNED_ENTITLEMENTS"',
     'missing signed entitlement keys', 'mismatched signed entitlement values',
     'codesign --verify --strict --verbose=2 "$SRC_APP"',
+    'SWIFT_RPATH_LOADS="$(xcrun otool -L "$BIN"',
+    'xcrun install_name_tool -change "$old_load" "$system_load" "$BIN"',
+    'xcrun install_name_tool -delete_rpath /usr/lib/swift "$BIN"',
+    'SYSTEM_SWIFT_LOADS=', 'NON_SYSTEM_SWIFT_LOADS=',
+    '最终主 Mach-O 未链接 iOS 系统 Swift runtime',
+    'Swift runtime 规范化后主 Mach-O 仍包含 LC_RPATH',
     'App bundle 签名未生成 _CodeSignature/CodeResources',
     'duplicate ZIP entries', 'missing _CodeSignature/CodeResources',
     'signature entries mismatch',
@@ -172,15 +180,18 @@ if ($sourceStatusPosition -lt 0 -or $buildOutputPosition -lt 0 -or
 }
 $plistCleanupPosition = $build.IndexOf("/usr/libexec/PlistBuddy -c 'Delete :LARABuildSourceCommit'", [StringComparison]::Ordinal)
 $plistValidationPosition = $build.IndexOf('python3 - "$INFO_PLIST"', [StringComparison]::Ordinal)
+$swiftNormalizePosition = $build.IndexOf('SWIFT_RPATH_LOADS="$(xcrun otool -L "$BIN"', [StringComparison]::Ordinal)
 $codesignPosition = $build.IndexOf('codesign --force --sign - --timestamp=none', [StringComparison]::Ordinal)
 $entitlementReadPosition = $build.IndexOf('codesign -d --entitlements :- "$BIN"', [StringComparison]::Ordinal)
 $entitlementComparePosition = $build.IndexOf('python3 - "$ROOT/Config/lara.entitlements" "$SIGNED_ENTITLEMENTS"', [StringComparison]::Ordinal)
 $codesignVerifyPosition = $build.IndexOf('codesign --verify --strict --verbose=2 "$SRC_APP"', [StringComparison]::Ordinal)
 if ($plistCleanupPosition -lt 0 -or $plistValidationPosition -lt 0 -or
-    $codesignPosition -lt 0 -or $entitlementReadPosition -lt 0 -or
+    $swiftNormalizePosition -lt 0 -or $codesignPosition -lt 0 -or
+    $entitlementReadPosition -lt 0 -or
     $entitlementComparePosition -lt 0 -or $codesignVerifyPosition -lt 0 -or
     $plistCleanupPosition -ge $plistValidationPosition -or
-    $plistValidationPosition -ge $codesignPosition -or
+    $plistValidationPosition -ge $swiftNormalizePosition -or
+    $swiftNormalizePosition -ge $codesignPosition -or
     $codesignPosition -ge $entitlementReadPosition -or
     $entitlementReadPosition -ge $entitlementComparePosition -or
     $entitlementComparePosition -ge $codesignVerifyPosition) {

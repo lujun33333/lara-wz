@@ -471,6 +471,7 @@
 				MARKETING_VERSION = 1.2.8;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
+					"-Wl,-headerpad_max_install_names",
 					"-Wl,-force_load,$(SRCROOT)/build/static-ios/libxpf.a",
 					"-Wl,-force_load,$(SRCROOT)/build/static-ios/libgrabkernel2.a",
 					-lcompression,
@@ -518,6 +519,7 @@
 				MARKETING_VERSION = 1.2.8;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
+					"-Wl,-headerpad_max_install_names",
 					"-Wl,-force_load,$(SRCROOT)/build/static-ios/libxpf.a",
 					"-Wl,-force_load,$(SRCROOT)/build/static-ios/libgrabkernel2.a",
 					-lcompression,
