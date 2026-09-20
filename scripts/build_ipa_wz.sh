@@ -21,6 +21,37 @@ die() { printf '[!] %s\n' "$*" >&2; exit 1; }
 command -v xcodebuild >/dev/null 2>&1 || die "缺少 xcodebuild"
 command -v zip >/dev/null 2>&1 || die "缺少 zip"
 
+# ── 从源码构建 libxpf.dylib ──────────────────────────────────────────────────
+# lara/lib/libxpf.dylib 曾经是一个提交进 git 的预编译二进制（2026-09-05），
+# 早于 XPF 的 "Fix some metrics not working on higher versions of iOS 26 and on
+# iOS 27 betas" 提交。旧版没有 arm_maxoffset 这条 fallback，于是
+# xpf_find_pmap_bootstrap 的字符串查找失败、XPF_ASSERT 直接终止，
+# pointer_mask 与 T1SZ_BOOT 都拿不到 —— 内核注入层的 call primitive 与
+# task port 随之全部失效。这里改为每次构建都从 vendor/XPF 源码编译，
+# 保证「修好的源码」真的进入出货二进制。
+say "从源码构建 libxpf.dylib ..."
+XPF_DIR="$ROOT/vendor/XPF"
+[ -f "$XPF_DIR/src/common.c" ] || die "缺少 vendor/XPF/src"
+[ -f "$XPF_DIR/Makefile" ]     || die "缺少 vendor/XPF/Makefile"
+if [ ! -d "$XPF_DIR/external/ChOma/src" ]; then
+    say "拉取 ChOma 子模块 ..."
+    rm -rf "$XPF_DIR/external/ChOma"
+    git clone --depth 1 https://github.com/opa334/ChOma \
+        "$XPF_DIR/external/ChOma" >/dev/null 2>&1 || die "无法拉取 ChOma"
+fi
+command -v ldid >/dev/null 2>&1 || die "缺少 ldid（brew install ldid）"
+mkdir -p "$ROOT/build"
+if ! make -C "$XPF_DIR" output/ios/libxpf.dylib \
+        >"$ROOT/build/xpf-build.log" 2>&1; then
+    tail -40 "$ROOT/build/xpf-build.log" >&2
+    die "libxpf 编译失败，见 build/xpf-build.log"
+fi
+cp "$XPF_DIR/output/ios/libxpf.dylib" "$ROOT/lara/lib/libxpf.dylib"
+# 断言：出货 dylib 必须含 iOS 26 修复引入的 fallback，否则说明又编进了旧版。
+LC_ALL=C grep -a -q -- "arm_maxoffset" "$ROOT/lara/lib/libxpf.dylib" \
+    || die "libxpf.dylib 缺少 arm_maxoffset —— 仍会编译进旧版 XPF"
+ok "libxpf.dylib 已由源码重建（含 arm_maxoffset）"
+
 need_files=(
     "lara/kexploit/wzmem.h"
     "lara/kexploit/wzmem.m"
@@ -149,6 +180,16 @@ for forbidden in --wzhud-host posix_spawn direct_remote_ WZHUDFloatWindow; do
     LC_ALL=C grep -a -q -- "$forbidden" "$BIN" \
         && die "最终二进制仍混入已删除的 HUD 路径：$forbidden"
 done
+
+# 最终 App 内嵌的 libxpf 必须就是源码重建的那份（含 iOS 26 修复的 fallback）。
+# 这条断言用于堵住「源码修了但出货二进制还是旧的」这一类静默复发。
+XPF_EMBEDDED="$SRC_APP/Frameworks/libxpf.dylib"
+[[ -f "$XPF_EMBEDDED" ]] || die "最终 App 未内嵌 libxpf.dylib"
+LC_ALL=C grep -a -q -- "arm_maxoffset" "$XPF_EMBEDDED" \
+    || die "内嵌 libxpf.dylib 缺少 arm_maxoffset —— 出货的是旧版 XPF"
+[[ "$(shasum -a 256 "$XPF_EMBEDDED" | awk '{print $1}')" == \
+   "$(shasum -a 256 "$ROOT/lara/lib/libxpf.dylib" | awk '{print $1}')" ]] \
+    || die "内嵌 libxpf.dylib 与源码重建产物不一致"
 [[ -f "$SRC_APP/Rajdhani Bold.otf" ]] \
     || die "最终 App 未包含 AX Rajdhani 字体"
 [[ "$(shasum -a 256 "$SRC_APP/Rajdhani Bold.otf" | awk '{print $1}')" == \
