@@ -728,7 +728,8 @@ final class laramgr: ObservableObject {
                     imageValid,
                     backendCanWrite
                 )
-                self.logmsg("(wz.aim) observer=\(aimObserverStarted ? \"started\" : \"closed\") profileWrite=observer-gated")
+                let aimObserverState = aimObserverStarted ? "started" : "closed"
+                self.logmsg("(wz.aim) observer=\(aimObserverState) profileWrite=observer-gated")
             } else {
                 wzaim_observer_stop()
                 wzaim_runtime_detach()
