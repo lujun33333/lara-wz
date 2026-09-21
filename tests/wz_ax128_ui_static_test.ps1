@@ -37,7 +37,8 @@ foreach ($title in @('小地图绘制','小地图血量','小地图回城','小�
                     '召唤师技能','大地图射线','大地图方框','大地图头像',
                     '自动功能','人物视野','斩杀敌人','斩杀坐标设置',
                     '自身视野暴露点(兵线)','自身视野暴露点(敌人)','小地图敌人视野',
-                    '技能大小','技能位置X','技能位置Y','地图大小','地图位置')) {
+                    '技能大小','技能位置X','技能位置Y','地图大小','地图位置',
+                    '过直播（开启后截图/录屏隐藏）')) {
     Require ([regex]::Escape('@"' + $title + '"')) "AX control missing: $title"
 }
 Require 'maxima\[\] = \{70,400,300,300,250\}' 'AX slider limits changed'
@@ -56,6 +57,13 @@ Require 'SecItemUpdate[\s\S]{0,200}errSecItemNotFound[\s\S]{0,250}SecItemAdd' 'A
 Require 'g_captureKillPoint && phase==WZHUDPointerPhaseBegan[\s\S]{0,800}click_coord_x[\s\S]{0,500}click_coord_y[\s\S]{0,500}ax_store_setting\(@"click_coord_space",@"fixed"\)' 'Physical coordinate capture is not persisted in fixed space'
 Require 'objc_getClass\("FBSOrientationObserver"\)' 'AX orientation observer missing'
 Require 'NSSelectorFromString\(@"activeInterfaceOrientation"\)' 'AX authoritative orientation getter missing'
+Require 'FrontBoardServices\.framework/FrontBoardServices' 'FrontBoardServices is not loaded before creating the orientation observer'
+Require 'UIInterfaceOrientationLandscapeLeft: return \(CGFloat\)-M_PI_2' 'Landscape-left rotation is reversed'
+Require 'UIInterfaceOrientationLandscapeRight: return \(CGFloat\)M_PI_2' 'Landscape-right rotation is reversed'
+Reject 'if \(g_orientation==orientation\) return;' 'Repeated orientation sync still skips geometry refresh'
+Require 'g_orientation==orientation &&[\s\S]{0,160}CGRectEqualToRect\(g_orientationSurfaceBounds,physical\)[\s\S]{0,160}CGRectEqualToRect\(g_orientationLogicalBounds,logical\)' 'Same-orientation sync does not refresh changed surface geometry'
+Require 'g_captureProtected\.store\(ax_bool\(@"stream"\)\)' 'Live-stream capture policy is not backed by the stream setting'
+Require 'g_captureProtected\.load\(\) \? 0x12 : 0' 'Capture mask is not disabled by default and enabled only for live-stream protection'
 Reject 'CMMotionManager|g_threeFinger|orientation_poll_timer|core_|wzCore' 'Non-AX orientation/input implementation remains'
 
 # CA renderer: 0x10074d6b0..0x1007666a8. No full-frame snapshot bridge.
