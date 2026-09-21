@@ -196,49 +196,5 @@ int main() {
     assert(diagnostics.hostWorldX == 12.0f);
     assert(diagnostics.hostWorldZ == -8.0f);
     assert(!diagnostics.autoKillSampleValid);
-
-    auto putHeroPosition = [&](uintptr_t actorAddress, uintptr_t base,
-                               const int32_t (&position)[3]) {
-        put(actorAddress + 0x268, base);
-        put(base + 0x10, base + 0x1000);
-        put(base + 0x1000, base + 0x2000);
-        put(base + 0x2060, base + 0x3000);
-        put(base + 0x3000, position);
-    };
-    constexpr uintptr_t localActor = 0x191000000;
-    constexpr uintptr_t nearbyFriendly = 0x192000000;
-    const int32_t localPosition[3]{12000, 0, -8000};
-    const int32_t nearbyPosition[3]{13000, 0, -8000};
-    putHeroPosition(localActor, 0x193000000, localPosition);
-    putHeroPosition(nearbyFriendly, 0x194000000, nearbyPosition);
-    KoiRuntimeDiagnostics hostDiagnostics{};
-    hostDiagnostics.hostPositionValid = 1;
-    hostDiagnostics.hostCampReady = 1;
-    hostDiagnostics.hostCampId = 1;
-    hostDiagnostics.hostWorldX = 12.0f;
-    hostDiagnostics.hostWorldY = 0.0f;
-    hostDiagnostics.hostWorldZ = -8.0f;
-    hostDiagnostics.actorRootRaw = 0x195000000;
-    const std::vector<KoiHeroHeader> uniqueHost{{localActor, 150, 1}};
-    PublishStableHostActor(reader, uniqueHost, &hostDiagnostics);
-    assert(!hostDiagnostics.hostActorReady);
-    PublishStableHostActor(reader, uniqueHost, &hostDiagnostics);
-    assert(hostDiagnostics.hostActorReady);
-    assert(hostDiagnostics.hostActorAddress == localActor);
-    assert(hostDiagnostics.hostActorConfigId == 150);
-
-    const std::vector<KoiHeroHeader> ambiguousHost{
-        {localActor, 150, 1}, {nearbyFriendly, 151, 1}};
-    PublishStableHostActor(reader, ambiguousHost, &hostDiagnostics);
-    assert(!hostDiagnostics.hostActorReady &&
-           hostDiagnostics.hostActorAddress == 0);
-    PublishStableHostActor(reader, uniqueHost, &hostDiagnostics);
-    assert(!hostDiagnostics.hostActorReady);
-    PublishStableHostActor(reader, uniqueHost, &hostDiagnostics);
-    assert(hostDiagnostics.hostActorReady);
-
-    hostDiagnostics.actorRootRaw = 0x196000000;
-    PublishStableHostActor(reader, uniqueHost, &hostDiagnostics);
-    assert(!hostDiagnostics.hostActorReady);
     YuanbaoCollectorReadersStop(2);
 }

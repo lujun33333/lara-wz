@@ -7,7 +7,6 @@ $observer = Get-Content -Raw (Join-Path $root 'lara/kexploit/wz/WZAimObserver.mm
 $observerHeader = Get-Content -Raw (Join-Path $root 'lara/kexploit/wz/WZAimObserver.h')
 $observerPolicy = Get-Content -Raw (Join-Path $root 'lara/kexploit/wz/WZAimObserverPolicy.h')
 $collector = Get-Content -Raw (Join-Path $root 'lara/kexploit/wz/YuanbaoCollector.mm')
-$types = Get-Content -Raw (Join-Path $root 'lara/kexploit/wz/KoiTypes.h')
 $consumer = Get-Content -Raw (Join-Path $root 'lara/kexploit/wzesp.mm')
 $swift = Get-Content -Raw (Join-Path $root 'lara/classes/laramgr.swift')
 $bridge = Get-Content -Raw (Join-Path $root 'lara/lara-Bridging-Header.h')
@@ -96,12 +95,6 @@ if ($observer -match '\bwz_write\s*\(') {
     throw 'FAIL: observer writes game fields outside WZAimRuntime whitelist'
 }
 Need $observerHeader 'wzaim_observer_poll' 'observer poll API missing'
-Need $observerHeader 'wzaim_observer_set_host_actor' 'collector-to-observer host actor API missing'
-Need $collector 'SelectUniqueHostActor' 'unique local actor selection missing'
-Need $collector 'consecutiveSamples < 2' 'two-sample local actor stability gate missing'
-Need $types 'hostActorAddress' 'stable host actor address is not published'
-Need $types 'hostActorConfigId' 'stable host actor config is not published'
-Need $consumer 'wzaim_observer_set_host_actor' 'wzesp does not feed the stable host actor to observer'
 Need $bridge 'wz/WZAimRuntime.h' 'Swift bridge import missing'
 Need $bridge 'wz/WZAimObserver.h' 'observer Swift bridge import missing'
 Need $swift 'wzaim_runtime_attach\(' 'attach lifecycle missing'

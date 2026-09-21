@@ -12,9 +12,6 @@ extern "C" bool wzaim_runtime_consume_snapshot(
         const KoiEntity *, size_t, const KoiRuntimeDiagnostics *) {
     return false;
 }
-extern "C" bool wzaim_observer_set_host_actor(
-        uint64_t, uint64_t, int32_t, int32_t) { return true; }
-extern "C" uint64_t wz_session_generation(void) { return 1; }
 
 static std::map<uint64_t, uint8_t> memory;
 
