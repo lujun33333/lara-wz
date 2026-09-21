@@ -80,10 +80,43 @@ int main() {
     assert(WZAimObserverPolicy::ExactLayout(layout));
     layout.indicatorDirection = 0xD8;
     assert(!WZAimObserverPolicy::ExactLayout(layout));
+    static_assert(WZAimObserverPolicy::kTypeInfoTableRVA == 0x137DF518);
+    static_assert(WZAimObserverPolicy::kSkillButtonManagerTypeIndex == 44507);
+    static_assert(WZAimObserverPolicy::kSkillSlotLinkerTypeIndex == 45480);
+    static_assert(WZAimObserverPolicy::kSkillControlIndicatorTypeIndex == 45348);
+    static_assert(WZAimObserverPolicy::kClassNameOffset == 0x10);
+    static_assert(WZAimObserverPolicy::kClassNamespaceOffset == 0x18);
+    static_assert(WZAimObserverPolicy::kClassParentOffset == 0x58);
+    static_assert(WZAimObserverPolicy::kClassFieldsOffset == 0x80);
+    static_assert(WZAimObserverPolicy::kClassStaticFieldsOffset == 0xB8);
+    static_assert(WZAimObserverPolicy::kClassInstanceSizeOffset == 0xF8);
+    static_assert(WZAimObserverPolicy::kClassFieldCountOffset == 0x124);
+    static_assert(WZAimObserverPolicy::kFieldInfoStride == 0x20);
+    static_assert(WZAimObserverPolicy::kFieldNameOffset == 0x00);
+    static_assert(WZAimObserverPolicy::kFieldTypeOffset == 0x08);
+    static_assert(WZAimObserverPolicy::kFieldParentOffset == 0x10);
+    static_assert(WZAimObserverPolicy::kFieldOffsetOffset == 0x18);
+    static_assert(WZAimObserverPolicy::kTypeAttributesOffset == 0x08);
+    static_assert(WZAimObserverPolicy::kFieldAttributeStatic == 0x10);
+
+    WZAimObserverPolicy::ClassStructure classStructure{
+        0x100100000, 0x100200000, 0x100300000, 0x100400000,
+        0x300, 12};
+    assert(WZAimObserverPolicy::ValidClassStructure(classStructure));
+    classStructure.fieldCount =
+        WZAimObserverPolicy::kMaxClassFieldCount + 1;
+    assert(!WZAimObserverPolicy::ValidClassStructure(classStructure));
+    classStructure.fieldCount = 12;
+    classStructure.fields = 0;
+    assert(!WZAimObserverPolicy::ValidClassStructure(classStructure));
+    classStructure.fields = 0x100400000;
+    classStructure.instanceSize = 8;
+    assert(!WZAimObserverPolicy::ValidClassStructure(classStructure));
+
     assert(WZAimObserverPolicy::MetadataRetryDelaySeconds(0) == 0.0);
     assert(WZAimObserverPolicy::MetadataRetryDelaySeconds(1) == 0.25);
-    assert(WZAimObserverPolicy::MetadataRetryDelaySeconds(6) == 8.0);
-    assert(WZAimObserverPolicy::MetadataRetryDelaySeconds(8) == 8.0);
+    assert(WZAimObserverPolicy::MetadataRetryDelaySeconds(4) == 2.0);
+    assert(WZAimObserverPolicy::MetadataRetryDelaySeconds(8) == 2.0);
 
     WZAimObserverPolicy::Observation observation{
         0x100300000,0x100400000,0x100400000,
