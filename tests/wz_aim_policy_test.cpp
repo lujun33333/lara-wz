@@ -71,6 +71,7 @@ int main() {
     layout.slotType = 0x30;
     layout.slotIndicator = 0x140;
     layout.indicatorSlot = 0x48;
+    layout.indicatorManager = 0x190;
     layout.indicatorPosition = 0xBC;
     layout.indicatorDirection = 0xDC;
     layout.indicatorOrigin = 0xE8;
@@ -80,10 +81,9 @@ int main() {
     assert(WZAimObserverPolicy::ExactLayout(layout));
     layout.indicatorDirection = 0xD8;
     assert(!WZAimObserverPolicy::ExactLayout(layout));
-    static_assert(WZAimObserverPolicy::kTypeInfoTableRVA == 0x137DF518);
-    static_assert(WZAimObserverPolicy::kSkillButtonManagerTypeIndex == 44507);
-    static_assert(WZAimObserverPolicy::kSkillSlotLinkerTypeIndex == 45480);
-    static_assert(WZAimObserverPolicy::kSkillControlIndicatorTypeIndex == 45348);
+    static_assert(WZAimObserverPolicy::kArrayMaxLengthOffset == 0x18);
+    static_assert(WZAimObserverPolicy::kArrayVectorOffset == 0x20);
+    static_assert(WZAimObserverPolicy::kMaxSkillSlotCount == 16);
     static_assert(WZAimObserverPolicy::kClassNameOffset == 0x10);
     static_assert(WZAimObserverPolicy::kClassNamespaceOffset == 0x18);
     static_assert(WZAimObserverPolicy::kClassParentOffset == 0x58);
@@ -115,18 +115,21 @@ int main() {
 
     assert(WZAimObserverPolicy::MetadataRetryDelaySeconds(0) == 0.0);
     assert(WZAimObserverPolicy::MetadataRetryDelaySeconds(1) == 0.25);
-    assert(WZAimObserverPolicy::MetadataRetryDelaySeconds(4) == 2.0);
-    assert(WZAimObserverPolicy::MetadataRetryDelaySeconds(8) == 2.0);
+    assert(WZAimObserverPolicy::MetadataRetryDelaySeconds(4) == 0.5);
+    assert(WZAimObserverPolicy::MetadataRetryDelaySeconds(8) == 0.5);
 
     WZAimObserverPolicy::Observation observation{
         0x100300000,0x100400000,0x100400000,
         0x100500000,0x100600000,0x100600000,
         0x100700000,0x100800000,0x100800000,
-        0x100500000,2,2,true,false};
+        0x100500000,0x100300000,2,2,true,false};
     assert(WZAimObserverPolicy::ExactObservation(observation));
     observation.indicatorSlot = 0x100500008;
     assert(!WZAimObserverPolicy::ExactObservation(observation));
     observation.indicatorSlot = observation.slot;
+    observation.indicatorManager = 0x100300008;
+    assert(!WZAimObserverPolicy::ExactObservation(observation));
+    observation.indicatorManager = observation.manager;
     observation.slotObservedClass = 0x100600008;
     assert(!WZAimObserverPolicy::ExactObservation(observation));
     observation.slotObservedClass = observation.slotClass;

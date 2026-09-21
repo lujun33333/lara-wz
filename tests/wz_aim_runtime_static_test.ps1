@@ -7,6 +7,7 @@ $observer = Get-Content -Raw (Join-Path $root 'lara/kexploit/wz/WZAimObserver.mm
 $observerHeader = Get-Content -Raw (Join-Path $root 'lara/kexploit/wz/WZAimObserver.h')
 $observerPolicy = Get-Content -Raw (Join-Path $root 'lara/kexploit/wz/WZAimObserverPolicy.h')
 $collector = Get-Content -Raw (Join-Path $root 'lara/kexploit/wz/YuanbaoCollector.mm')
+$types = Get-Content -Raw (Join-Path $root 'lara/kexploit/wz/KoiTypes.h')
 $consumer = Get-Content -Raw (Join-Path $root 'lara/kexploit/wzesp.mm')
 $swift = Get-Content -Raw (Join-Path $root 'lara/classes/laramgr.swift')
 $bridge = Get-Content -Raw (Join-Path $root 'lara/lara-Bridging-Header.h')
@@ -31,6 +32,10 @@ Need $policy 'TransportSessionReady' 'pre-observer transport/session gate missin
 Need $runtime 'ExactIndicatorField' 'indicator field whitelist missing'
 Need $runtime 'gIndicator \+ 0x48' 'verified indicator-to-skill-slot chain missing'
 Need $runtime 'skillSlotObject \+ 0x30' 'active skill slot read missing'
+Need $runtime 'ObserveReadOnlyHeroIdentity' 'read-only hero identity path missing'
+Need $runtime 'friendlyObserverCount' 'friendly observer identity diagnostic missing'
+Need $runtime 'hostPositionValid=%u friendlyObserverCount=%u[\s\S]{0,120}nearestConfigId=%d distance=%.2f' 'rate-limited hero identity diagnostic is incomplete'
+Need $runtime 'gNextHeroIdentityDiagnostic = identityNow \+ 2\.0' 'hero identity diagnostic is not rate limited'
 Need $runtime 'WriteIndicatorPair' 'paired write/readback transaction missing'
 Need $runtime 'RestoreOriginal' 'original-release rollback missing'
 Need $runtime 'gConfig\.enabled == 0[\s\S]{0,220}WZAimRuntimeStatusDisabled' 'disabling aim can leave a stale target drawing'
@@ -43,10 +48,9 @@ if ($header -match 'wzaim_runtime_bind_indicator\(') {
     throw 'FAIL: unverified raw indicator binder remains exposed'
 }
 Need $header 'wzaim_runtime_set_gesture_active' 'gesture lifecycle API missing'
-Need $observerPolicy 'kTypeInfoTableRVA = 0x137DF518' 'pure-read IL2CPP type-info anchor missing'
-Need $observerPolicy 'kSkillButtonManagerTypeIndex = 44507' 'manager type-definition index missing'
-Need $observerPolicy 'kSkillSlotLinkerTypeIndex = 45480' 'slot type-definition index missing'
-Need $observerPolicy 'kSkillControlIndicatorTypeIndex = 45348' 'indicator type-definition index missing'
+Need $observerPolicy 'kArrayMaxLengthOffset = 0x18' 'IL2CPP array length layout missing'
+Need $observerPolicy 'kArrayVectorOffset = 0x20' 'IL2CPP array vector layout missing'
+Need $observerPolicy 'kMaxSkillSlotCount = 16' 'skill-slot array bound missing'
 Need $observerPolicy 'kClassNameOffset = 0x10' 'Il2CppClass name layout missing'
 Need $observerPolicy 'kClassNamespaceOffset = 0x18' 'Il2CppClass namespace layout missing'
 Need $observerPolicy 'kClassParentOffset = 0x58' 'Il2CppClass parent layout missing'
@@ -61,20 +65,20 @@ Need $observerPolicy 'ValidClassStructure' 'Il2CppClass structural validation mi
 Need $observerPolicy 'indicatorSlot != 0x48' 'reflected indicator layout gate missing'
 Need $observerPolicy 'indicatorPosition != WZAimPolicy::kIndicatorPositionOffset' 'position field gate missing'
 Need $observer 'VerifyRemoteUUID' 'observer does not independently verify remote UUID'
-Need $observer 'ReadFreshAt\(gObserver\.unityBase,[\s\S]{0,120}kTypeInfoTableRVA' 'observer does not freshly read the mutable type-info anchor'
-Need $observer 'ReadFreshAt\(typeInfoTable,\s*tableOffset' 'observer does not freshly read mutable type-info entries'
-Need $observer 'ReadFreshAt\(gObserver\.managerSingletonClass,[\s\S]{0,120}kClassStaticFieldsOffset' 'observer does not freshly read the singleton static-fields root'
-Need $observer 'ReadFreshAt\(trace->staticFields,\s*gObserver\.managerSingletonOffset' 'observer does not freshly read the singleton value'
+Need $observer 'ResolveObjectClassLocked' 'live object-header class validation missing'
+Need $observer 'ActorLinker' 'host actor class validation missing'
+Need $observer 'SkillLinkerComponent' 'skill-control class validation missing'
+Need $observer 'SkillControl' 'actor-to-skill-control field missing'
+Need $observer 'skillSlotLinkerArray' 'skill-slot array object chain missing'
+Need $observer 'm_skillBtnMgr' 'indicator-to-manager object chain missing'
 Need $observer 'metadata pending attempt=%u stage=%s' 'metadata failure stage diagnostics missing'
-Need $observer 'manager pending stage=%s' 'singleton failure stage diagnostics missing'
 Need $observer 'CSkillButtonManager' 'real skill-button manager observer missing'
 Need $observer 'SkillSlotLinker' 'exact skill-slot class validation missing'
 Need $observer 'SkillControlIndicator' 'exact indicator class validation missing'
-Need $observer 'name != "_instance"' 'singleton observer does not require the exact _instance field'
+Reject $observer 'kTypeInfoTableRVA|managerSingleton|name != "_instance"|CurUseSkillSlot|kActorRootRVA|kHostPositionRootRVA' 'observer still contains a fallback metadata/actor/current-slot path'
 Need $observer 'record\.parent != klass\.structure\.klass' 'FieldInfo parent validation missing'
 Need $observer 'kTypeAttributesOffset' 'FieldInfo type attributes are not read directly'
 Need $observer 'kFieldAttributeStatic' 'static/instance FieldInfo gate missing'
-Need $observer 'kClassStaticFieldsOffset' 'singleton is not read from parent static_fields'
 Need $observer 'm_skillButtonDown' 'real button-down source missing'
 Need $observer 'm_skillButtonDraging' 'real drag source missing'
 Need $observer 'm_usingSlot' 'active SkillSlotLinker source missing'
@@ -82,7 +86,7 @@ Need $observer 'skillIndicator' 'slot-to-indicator source missing'
 Need $observer 'ExactObservation' 'object/class/link proof missing'
 Need $observerPolicy 'kMetadataRetryAttemptSaturation = 8' 'metadata retry counter is not bounded'
 Need $observerPolicy 'MetadataRetryDelaySeconds' 'metadata retry backoff policy missing'
-Need $observerPolicy 'return delay > 2\.0 \? 2\.0 : delay' 'metadata retry cadence is not capped at two seconds'
+Need $observerPolicy 'completedAttempts == 1 \? 0\.25 : 0\.5' 'active object-chain retry cadence is not bounded'
 Need $observer 'metadataResolveAttempts <[\s\S]{0,120}kMetadataRetryAttemptSaturation' 'metadata retry counter does not saturate'
 Need $observer 'now >= gObserver\.nextMetadataResolve' 'metadata retry has no backoff gate'
 Reject $observer 'RemoteCall|doRemoteCall|remote_write|remote_alloc_str|thread_attach|thread_detach|\bmalloc\b|\bfree\b' 'observer still executes or prepares target-process calls'
@@ -92,6 +96,12 @@ if ($observer -match '\bwz_write\s*\(') {
     throw 'FAIL: observer writes game fields outside WZAimRuntime whitelist'
 }
 Need $observerHeader 'wzaim_observer_poll' 'observer poll API missing'
+Need $observerHeader 'wzaim_observer_set_host_actor' 'collector-to-observer host actor API missing'
+Need $collector 'SelectUniqueHostActor' 'unique local actor selection missing'
+Need $collector 'consecutiveSamples < 2' 'two-sample local actor stability gate missing'
+Need $types 'hostActorAddress' 'stable host actor address is not published'
+Need $types 'hostActorConfigId' 'stable host actor config is not published'
+Need $consumer 'wzaim_observer_set_host_actor' 'wzesp does not feed the stable host actor to observer'
 Need $bridge 'wz/WZAimRuntime.h' 'Swift bridge import missing'
 Need $bridge 'wz/WZAimObserver.h' 'observer Swift bridge import missing'
 Need $swift 'wzaim_runtime_attach\(' 'attach lifecycle missing'
@@ -105,6 +115,22 @@ if ($runtime -match 'YuanbaoCollectorGather|YuanbaoCollectorReadAimHostPosition|
     $swift -match 'wzaim_runtime_tick\(') {
     throw 'FAIL: aim still owns a second gather/host/projection path'
 }
+$consumeStart = $runtime.IndexOf('bool wzaim_runtime_consume_snapshot(')
+$consumeEnd = $runtime.IndexOf('bool wzaim_runtime_copy_target(', $consumeStart)
+$consumeBody = $runtime.Substring($consumeStart, $consumeEnd - $consumeStart)
+$identityIndex = $consumeBody.IndexOf('ObserveReadOnlyHeroIdentity(')
+$heroPublishIndex = $consumeBody.IndexOf(
+    'if (hero <= 0 && identity.heroId > 0) hero = identity.heroId;')
+$liveIndex = $consumeBody.IndexOf('const bool live =')
+$notLiveIndex = $consumeBody.IndexOf('if (!live)')
+$slotIndex = $consumeBody.IndexOf('if (slot == 0 && gIndicator != 0)')
+if ($identityIndex -lt 0 -or $heroPublishIndex -lt 0 -or
+    $liveIndex -lt 0 -or $notLiveIndex -lt 0 -or $slotIndex -lt 0 -or
+    $identityIndex -gt $liveIndex -or $heroPublishIndex -gt $notLiveIndex -or
+    $identityIndex -gt $slotIndex) {
+    throw 'FAIL: read-only hero identity remains behind observer/skill write gates'
+}
+Need $consumeBody 'if \(!live\)[\s\S]{0,360}WZAimRuntimeStatusSessionMismatch[\s\S]{0,180}hero, slot' 'unverified observer state does not publish the read-only hero identity'
 Need $swift 'stopWZReadersOnWorker\(\)\s*wzaim_observer_stop\(\)\s*wzaim_runtime_detach\(\)\s*wzesp_reset\(\)\s*wz_disconnect\(\)' 'detach must stop observer and restore before transport disconnect'
 Need $hud 'wzaim_runtime_is_ready\(\)' 'UI readiness gate missing'
 Need $hud 'wzaim_runtime_apply_config\(&aim\)' 'UI config is not connected to runtime'
