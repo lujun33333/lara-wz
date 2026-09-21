@@ -713,7 +713,15 @@ final class laramgr: ObservableObject {
                 self.wzAuxiliaryReaderInFlight = false
                 self.wzAutoKillReaderInFlight = false
                 wzesp_readers_start(self.wzReaderGeneration)
+                wzaim_runtime_attach(
+                    pid,
+                    wz_session_generation(),
+                    base,
+                    imageValid,
+                    canWrite
+                )
             } else {
+                wzaim_runtime_detach()
                 wz_disconnect()
             }
             DispatchQueue.main.async {
@@ -775,6 +783,7 @@ final class laramgr: ObservableObject {
             // Invalidate, drain both independent readers, then clear caches
             // and release the transport (AX 0x1008071d0/0x100807374 order).
             self.stopWZReadersOnWorker()
+            wzaim_runtime_detach()
             wzesp_reset()
             wz_disconnect()
             "none".withCString {
@@ -874,7 +883,7 @@ final class laramgr: ObservableObject {
 
         var readerFlags: UInt32 = 0
         if flags & UInt32(WZESP_SHOW_HERO_VISION | WZESP_SHOW_SOLDIER_VISION |
-                          WZESP_AUTO_KILL) != 0 {
+                          WZESP_AUTO_KILL | WZESP_COLLECT_AIM) != 0 {
             readerFlags |= UInt32(WZESP_READER_HOST_POSITION)
         }
         if flags & UInt32(WZESP_AUTO_KILL) != 0 {
@@ -963,6 +972,7 @@ final class laramgr: ObservableObject {
                 wzTimer?.cancel()
                 wzTimer = nil
                 stopWZReadersOnWorker()
+                wzaim_runtime_detach()
                 wzesp_reset()
                 wz_disconnect()
                 "none".withCString {
@@ -1301,6 +1311,7 @@ final class laramgr: ObservableObject {
                 return
             }
             self.stopWZReadersOnWorker()
+            wzaim_runtime_detach()
             wzesp_reset()
             wz_disconnect()
             DispatchQueue.main.async {

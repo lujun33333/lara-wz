@@ -8,6 +8,11 @@
 #include <cstring>
 #include <map>
 
+extern "C" bool wzaim_runtime_consume_snapshot(
+        const KoiEntity *, size_t, const KoiRuntimeDiagnostics *) {
+    return false;
+}
+
 static std::map<uint64_t, uint8_t> memory;
 
 template<class T> void put(uint64_t address, const T &value) {

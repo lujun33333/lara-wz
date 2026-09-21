@@ -16,12 +16,12 @@ function Reject([string]$pattern, [string]$message) {
     if ($source -match $pattern) { throw "FAIL: $message" }
 }
 
-# Yuanbao/Qingtian menu policy: three pages, responsive phone layout and
-# explicit unsupported write pages in this read-only build.
+# Yuanbao/Qingtian menu policy: drawing controls remain point-for-point on the
+# first page, while the real aim runtime owns the two additional pages.
 Require 'qingtian_layout_for_bounds' 'Qingtian responsive layout is missing'
 Require 'availableWidth=phone \? width\*\.80' 'Qingtian phone width policy changed'
 Require 'baseWidth=phone \? fmin\(780,fmax\(540,availableWidth\)\)' 'Qingtian width clamp changed'
-Require '@\[@"绘制",@"自瞄",@"自瞄调试"\]' 'Qingtian page order changed'
+Require '@\[@"绘制",@"\\u81ea\\u7784",@"\\u81ea\\u7784\\u8c03\\u8bd5"\]' 'Qingtian/aim page order changed'
 Require '@"绘制设置"' 'Qingtian drawing page title missing'
 Require '@"屏幕元素与位置调整"' 'Qingtian drawing subtitle missing'
 Require '@"设置即时生效"' 'Qingtian footer state missing'
@@ -40,19 +40,24 @@ Reject 'NSUserDefaults' 'AX settings incorrectly use UserDefaults'
 foreach ($title in @('调试窗口','屏幕捕获','大图头像','小图兵线',
                     '小图头像','野怪刷新','英雄技能','英雄方框',
                     '屏幕绘制','位置与视距','恢复位置',
-                    '技能 X','技能 Y','地图 X','地图 Y')) {
+                    '技能 X','技能 Y','地图 X','地图 Y',
+                    '进阶兼容 · 自动功能','斩杀敌人','设置坐标',
+                    '进阶兼容 · 视野','兵线暴露','英雄暴露','敌人视野',
+                    '参数与运行时','选择目标','目标绘制','英雄与模式','技能参数')) {
     Require ([regex]::Escape('@"' + $title + '"')) "AX control missing: $title"
 }
 Reject '@"大地图射线"|@"小地图血量"|@"小地图回城"' 'Non-Yuanbao independent drawing toggles remain'
-Require '当前只读构建未接入' 'Unsupported write pages are not explicit'
-Reject '@"斩杀敌人"|@"地图内透"|@"自瞄开关"' 'Unsupported write controls are presented as functional'
+Require 'wzaim_runtime_is_ready\(\)' 'Aim controls are not gated by runtime readiness'
+Reject 'aim\.button|44003|AIM 悬浮按钮' 'Unconnected AIM floating trigger remains as a fallback UI'
 Require 'defaults\[\] = \{[\s\S]{0,80}50,-57,10,150,MAX\(0\.0f,logicalWidth-150\.0f-10\.0f\)' 'Yuanbao coordinate defaults changed'
 Require 'minima\[\] = \{0,-300,0,0,0\}' 'Yuanbao skill X slider cannot represent -57'
 Require 'if \(ax_bool\(@"bigmapimage"\)\) flags \|= WZESP_SHOW_AVATAR' 'heroEnabled is not bound to the world portrait consumer'
-Reject 'if \(ax_bool\(@"bigmapimage"\)\)[^;]*WZESP_SHOW_RAY' 'Yuanbao big portrait incorrectly enables a ray'
+Reject 'WZESP_SHOW_RAY' 'Legacy all-hero ray implementation remains beside aim target drawing'
 Require 'if \(ax_bool\(@"draw"\)\)[\s\S]{0,100}WZESP_SHOW_MINIMAP \| WZESP_SHOW_HEALTH \| WZESP_SHOW_RECALL' 'avatarEnabled is not bound to minimap portrait/health/recall'
 Require 'g_captureProtected\.store\(ax_bool\(@"stream"\)\)' 'liveBypassEnabled is not bound to capture protection'
 Require 'ax_bool\(@"debug"\)[^;]*WZESP_SHOW_MAP_ADJUSTMENT' 'debugOverlayEnabled consumer is missing'
+Require 'WZESP_SHOW_MAP_ADJUSTMENT\)[\s\S]{0,240}ax_push_rect\(commands,[\s\S]{0,180}config\.minimapSize' 'Debug guide is not emitted by the shared renderer'
+Reject 'g_wzMinimapGuide|apply_wz_snapshot_main|g_wzWorldViews|g_wzRayViews|g_wzSkillPortraits' 'Legacy UIKit staging renderer remains beside the shared command renderer'
 Require 'ax_bool\(@"soldier"\)[^;]*WZESP_SHOW_SOLDIER' 'soldierEnabled consumer is missing'
 Require 'ax_bool\(@"monster"\)[^;]*WZESP_SHOW_MONSTER \| WZESP_SHOW_MONSTER_TIMER' 'monsterEnabled consumer is missing'
 Require 'ax_bool\(@"skill"\)[^;]*WZESP_SHOW_SKILL' 'skillEnabled consumer is missing'
@@ -67,7 +72,11 @@ Require 'kSecMatchLimitOne' 'AX settings query does not request one result'
 Require 'NSPropertyListBinaryFormat_v1_0' 'AX settings binary plist encoding missing'
 Require 'kSecAttrAccessibleAfterFirstUnlock' 'AX keychain accessibility changed'
 Require 'SecItemUpdate[\s\S]{0,200}errSecItemNotFound[\s\S]{0,250}SecItemAdd' 'AX keychain update/add sequence changed'
-Reject 'ax_bool\(@"auto\.kill"\)|ax_bool\(@"shiye\.|click_coord_space' 'Unsupported write/vision consumers remain active behind the Yuanbao UI'
+Require 'ax_bool\(@"auto\.kill"\)[^;]*WZESP_AUTO_KILL' 'Auto-kill UI is not bound to its action flag'
+Require 'ax_bool\(@"shiye\.hero"\)[^;]*WZESP_SHOW_HERO_VISION' 'Hero exposure UI is not bound to its collector flag'
+Require 'ax_bool\(@"shiye\.soldier"\)[^;]*WZESP_SHOW_SOLDIER_VISION' 'Soldier exposure UI is not bound to its collector flag'
+Require 'ax_bool\(@"minimap\.enemyvision"\)[^;]*WZESP_SHOW_ENEMY_VISION' 'Enemy minimap vision UI is not bound to its collector flag'
+Require 'g_captureKillPoint && phase==WZHUDPointerPhaseBegan[\s\S]{0,800}click_coord_x[\s\S]{0,500}click_coord_y[\s\S]{0,500}ax_store_setting\(@"click_coord_space",@"fixed"\)' 'Physical kill coordinate capture is not persisted'
 Require 'objc_getClass\("FBSOrientationObserver"\)' 'AX orientation observer missing'
 Require 'NSSelectorFromString\(@"activeInterfaceOrientation"\)' 'AX authoritative orientation getter missing'
 Require 'FrontBoardServices\.framework/FrontBoardServices' 'FrontBoardServices is not loaded before creating the orientation observer'
@@ -96,9 +105,6 @@ Require 'const float centerY = item\.screenY - 20\.0f' 'Yuanbao world portrait a
 Require 'const float portraitRadius = 6\.0f' 'Yuanbao world portrait radius changed'
 Require 'ax_push_circle\(commands, center, 7\.8f' 'Yuanbao world health circle missing'
 Require 'config.minimapSize / 17\.0f' 'AX minimap portrait radius changed'
-Require 'healthRing.lineWidth = 1\.8' 'AX health arc width changed'
-Require 'endAngle:\(CGFloat\)\(-M_PI_2\+M_PI\*2\.0\*fmin\(1\.0,fmax\(0\.0,healthRatio\)\)\)' 'Health arc must be encoded in the path for both backends'
-Require 'healthRing.strokeEnd = 1' 'Metal backend cannot consume implicit strokeEnd health clipping'
 Require 'kAXImGuiDeltaTime = 0\.01666666753590107f' 'AX ImGui default DeltaTime changed'
 Require 'g_axFrameTime \+= \(double\)kAXImGuiDeltaTime' 'AX animation Time no longer uses the fixed ImGui step'
 Reject 'g_axLastTick|now-g_axLastTick' 'Wall-clock delta path remains in the AX animation clock'
@@ -123,8 +129,8 @@ Require 'g_metalRenderer\.view\.hidden=YES' 'Background does not hide the Metal 
 Require '\[g_layerRenderer setVisible:NO\]' 'CA backend is not hidden in foreground'
 Require '\[g_layerRenderer setVisible:YES\]' 'CA backend is not restored in background'
 Require 'orientationGeneration!=g_orientationGeneration.load\(\)' 'Stale rotation completion is not generation guarded'
-Require 'rotation=\(float\)g_axFrameTime\*2\.5f' 'AX recall spin rate changed'
-Require 'index<4' 'AX four recall arc groups missing'
+Require 'const float rotation = \(float\)frameTime \* 2\.5f' 'AX recall spin rate changed'
+Require 'segment < 4' 'AX four recall arc groups missing'
 Require '1\.0995573997497559f' 'AX primary recall sweep changed'
 Require '0\.5497786998748779f' 'AX secondary recall sweep changed'
 Require '0xFFFFDC64u' 'AX primary recall color changed'
@@ -132,10 +138,10 @@ Require '0xB4C87828u' 'AX secondary recall color changed'
 Require '0x50DC8C3Cu' 'AX recall base-ring color changed'
 Require 'AXMonsterPolicy::MinimapMarker' 'AX fixed-slot monster marker policy missing'
 Require 'item.axMonsterSlot' 'Monster slot identity is lost across collection/rendering'
-Require 'AXMonsterPolicy::TimerColor\(\(size_t\)item.axMonsterSlot\)' 'AX timer color is not consumed from shared policy'
+Require 'AXMonsterPolicy::TimerColor\([\s\S]{0,60}\(size_t\)item.axMonsterSlot\)' 'AX timer color is not consumed from shared policy'
 Require 'AXMonsterPolicy::DrawableSlot\(item.axMonsterSlot\)' 'AX draw-slot filter is not consumed from shared policy'
 Require 'AXMonsterPolicy::TimerOriginOffset' 'AX timer origin offset missing'
-Require 'item.cooldownSeconds!=0' 'AX nonzero timer condition changed'
+Require 'item.cooldownSeconds != 0' 'AX nonzero timer condition changed'
 Reject 'WZYuanbaoDrawPolicy|monsterSubtype|showWorldMonster' 'Non-AX monster presentation remains'
 Require '@implementation AXHUDCoreAnimationRenderer' 'AX CA renderer missing'
 Require 'object_getClass\(layer\) != layerClass' 'Layer pool does not compare exact layer class'

@@ -9,6 +9,11 @@
 #include <cstring>
 #include <map>
 
+extern "C" bool wzaim_runtime_consume_snapshot(
+        const KoiEntity *, size_t, const KoiRuntimeDiagnostics *) {
+    return false;
+}
+
 static std::map<uint64_t, uint8_t> memory;
 static std::atomic<int> touchCalls{0};
 static std::atomic<bool> acceptTouch{true};

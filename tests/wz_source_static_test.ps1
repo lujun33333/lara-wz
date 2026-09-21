@@ -129,7 +129,7 @@ Require-Text 'lara/classes/laramgr.swift' 'func terminateWZSession[\s\S]{0,700}d
 # AX pages and the retained collector draw-item interface.
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'item\.primitive == WZESP_PRIMITIVE_MONSTER_POINT' '野怪点位绘制断开'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'item\.primitive == WZESP_PRIMITIVE_SOLDIER_POINT' '兵线点位绘制断开'
-Require-Text 'lara/kexploit/WZHUDBridge.mm' 'g_wzPortraitRecallRings' '回城动态绘制断开'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'item\.recallActive[\s\S]{0,900}1\.0995573997497559f' '回城动态绘制断开'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'item\.auxiliaryCooldownSeconds' '辅助技能冷却未进入绘制层'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'heroimg/%d/%d\.jpg' 'AX 英雄头像加载链未接入'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'summoner/%d\.jpg' 'AX 召唤师图标加载链未接入'

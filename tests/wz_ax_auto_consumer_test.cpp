@@ -6,6 +6,11 @@
 #include <cassert>
 #include <vector>
 
+extern "C" bool wzaim_runtime_consume_snapshot(
+        const KoiEntity *, size_t, const KoiRuntimeDiagnostics *) {
+    return false;
+}
+
 static std::atomic<int> taps{0};
 static std::atomic<bool> acceptTap{true};
 struct PendingTapCompletion {

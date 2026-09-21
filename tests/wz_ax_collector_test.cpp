@@ -59,7 +59,8 @@ int main() {
     put(hp + 0x170, int32_t(1000));
     KoiEntity entity{};
     ReadAXEntityState(reader, actor, true, &entity);
-    assert(entity.axPositionValid && entity.axWorldX == 1 && entity.axWorldZ == -2);
+    assert(entity.axPositionValid && entity.axWorldX == 1 &&
+           entity.axWorldY == 9 && entity.axWorldZ == -2);
     assert(entity.axHealthValid && entity.axHealth == 100 && entity.axHealthTotal == 1000);
     assert(!entity.axDead);
     put(hp + 0x160, int32_t(0));

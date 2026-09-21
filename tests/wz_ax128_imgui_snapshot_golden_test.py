@@ -10,12 +10,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = (ROOT / "lara/kexploit/WZHUDBridge.mm").read_text(encoding="utf-8")
-EXPECTED_SHA256 = "811a98bab92296b24bdb437e3fbcb0784fb1867f6d5b6c890aa3de6ee6067e8e"
+EXPECTED_SHA256 = "040e7db97a92280938e7d41a756bc8ece5c0c352e113a96224e63b58f9dfe508"
 
 SHOW_AVATAR = 1 << 0
 SHOW_HEALTH = 1 << 1
 SHOW_RECALL = 1 << 2
-SHOW_RAY = 1 << 3
 SHOW_BOX = 1 << 4
 SHOW_ENEMY_VISION = 1 << 6
 SHOW_MINIMAP = 1 << 7
@@ -70,8 +69,6 @@ def produce(config: dict, items: list[dict], frame_time: float, bounds: tuple[fl
         if item["category"] == "hero" and item["on_screen"]:
             if flags & SHOW_BOX:
                 out.append(["rect", f(item["screen_x"] - 20), f(item["screen_y"] - 50), f(item["screen_x"] + 20), f(item["screen_y"] + 10), "00ff00ff", 0.0, 0, 1.0])
-            if flags & SHOW_RAY:
-                out.append(["line", f(width / 2), f(height / 2), f(item["screen_x"]), f(item["screen_y"] - 8), "00ff00ff", 1.0])
             if flags & SHOW_AVATAR:
                 portrait_size = config["map_size"] / 15.4 * 2
                 center_y = item["screen_y"] - 8
@@ -114,7 +111,7 @@ def produce(config: dict, items: list[dict], frame_time: float, bounds: tuple[fl
     return out
 
 
-flags = SHOW_AVATAR | SHOW_HEALTH | SHOW_RECALL | SHOW_RAY | SHOW_BOX | SHOW_ENEMY_VISION | SHOW_MINIMAP | SHOW_MONSTER | SHOW_MONSTER_TIMER | SHOW_SOLDIER | SHOW_SKILL
+flags = SHOW_AVATAR | SHOW_HEALTH | SHOW_RECALL | SHOW_BOX | SHOW_ENEMY_VISION | SHOW_MINIMAP | SHOW_MONSTER | SHOW_MONSTER_TIMER | SHOW_SOLDIER | SHOW_SKILL
 config = {"flags": flags, "map_size": 170.0, "skill_size": 30.0, "skill_x": 10.0, "skill_y": 20.0}
 items = [
     {"category": "hero", "primitive": "entity", "enemy": True, "config_id": 105, "skill_id": 0, "aux": 12.0, "skill_cd": 8.0, "screen_x": 100.0, "screen_y": 200.0, "on_screen": True, "map_x": 300.0, "map_y": 400.0, "map_valid": True, "slot": -1, "recall": True, "health": 0.5, "exposure_valid": True, "dimmed": True, "radius": 0, "rgba": "00000000", "cooldown": 0},
@@ -126,7 +123,7 @@ items = [
 commands = produce(config, items, 0.5, (844.0, 390.0))
 payload = json.dumps(commands, ensure_ascii=False, separators=(",", ":")).encode()
 actual_sha256 = hashlib.sha256(payload).hexdigest()
-assert len(commands) == 27, len(commands)
+assert len(commands) == 26, len(commands)
 assert actual_sha256 == EXPECTED_SHA256, actual_sha256
 
 for required in (
