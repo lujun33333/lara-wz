@@ -82,7 +82,7 @@ Require-Text 'lara/kexploit/WZHUDBridge.mm' 'bool wzhud_register_springboard_hos
 Require-Text 'lara/kexploit/WZHUDBridge.mm' '_shouldCreateContextAsSecure \{ return NO; \}' 'Core system-window fallback 仍错误创建 secure context'
 
 # AX failure callbacks report the error; only host success opens the game.
-Require-Text 'lara/classes/laramgr.swift' 'func launchWZGame\(\)[\s\S]*setGameHUD\(true\)[\s\S]*prepareWZSpringBoardHosting \{[\s\S]{0,450}guard success else[\s\S]{0,200}openWZGame\(epoch: launchEpoch\)' '游戏启动未依照 AX 成功/失败分支'
+Require-Text 'lara/classes/laramgr.swift' 'func launchWZGame\(\)[\s\S]*setGameHUD\(true\)[\s\S]*prepareWZSpringBoardHosting \{[\s\S]{0,450}guard success else[\s\S]{0,500}wzhud_set_panel_visible\(true\)[\s\S]{0,100}openWZGame\(epoch: launchEpoch\)' '游戏启动未在托管成功后展示 HUD 并启动游戏'
 Require-Text 'lara/classes/laramgr.swift' 'wzLaunchPending = true[\s\S]{0,180}initializeWZEnvironment\(\)' '首次启动未保留环境初始化后的续接请求'
 Require-Text 'lara/classes/laramgr.swift' 'if self\.wzLaunchPending \{[\s\S]{0,100}self\.launchWZGame\(\)' '偏移初始化成功后未自动续接游戏启动'
 Require-Text 'lara/classes/laramgr.swift' 'if wzhud_local_hosting_ready\(\) \{' 'HUD 启动未以本地托管 readiness 为第一级'

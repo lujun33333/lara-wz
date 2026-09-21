@@ -503,6 +503,9 @@ final class laramgr: ObservableObject {
                 self.wzStatus = "跨 App 托管失败，游戏未启动"
                 return
             }
+            // 游戏首次进入时直接展示 AX 控制面板；用户可用“×”收起为悬浮球，
+            // “退出 HUD”仍只负责完整注销双窗口。
+            wzhud_set_panel_visible(true)
             self.openWZGame(epoch: launchEpoch)
         }
     }

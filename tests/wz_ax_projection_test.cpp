@@ -1,4 +1,5 @@
 #include <cassert>
+#include <cstddef>
 #include <cmath>
 #include <cstdint>
 #include <limits>
@@ -7,6 +8,12 @@
 static std::map<uint64_t, uint8_t> gMemory;
 static size_t gReadCount = 0;
 static size_t gTerminalChangeResetCount = 0;
+
+extern "C" long wz_read(uint64_t address, void *output, size_t size);
+extern "C" long wz_read_fresh_root(uint64_t address, void *output,
+                                     size_t size, uint64_t *rebuildCount);
+extern "C" const char *wz_transport_name(void);
+extern "C" void YuanbaoCollectorResetForTerminalChange(void);
 
 #include "../lara/kexploit/wz/KoiProjection.mm"
 
@@ -85,15 +92,15 @@ int main() {
     float minimapX = 0.0f;
     float minimapY = 0.0f;
     assert(KoiProjectionMinimapPoint(
-        55.4f, 55.15f, 10.0f, 110.8f, 1.0f,
+        50.0f, 50.0f, 10.0f, 100.0f, 1.0f,
         &minimapX, &minimapY));
-    assert(std::fabs(minimapX - 120.8f) < 0.0001f);
+    assert(std::fabs(minimapX - 110.0f) < 0.0001f);
     assert(std::fabs(minimapY) < 0.0001f);
     assert(KoiProjectionMinimapPoint(
-        55.4f, 55.15f, 10.0f, 110.8f, -1.0f,
+        50.0f, 50.0f, 10.0f, 100.0f, -1.0f,
         &minimapX, &minimapY));
     assert(std::fabs(minimapX - 10.0f) < 0.0001f);
-    assert(std::fabs(minimapY - 110.8f) < 0.0001f);
+    assert(std::fabs(minimapY - 100.0f) < 0.0001f);
 
     // AX 0x100805720..0x1008057d0 caches the resolved matrix terminal for
     // 350 ms, while 0x10080585c..0x100805868 still reads its payload on each
