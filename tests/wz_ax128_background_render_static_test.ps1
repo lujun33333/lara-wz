@@ -24,6 +24,14 @@ Require-Literal $header 'WZHUDRenderBackendMetal' 'Metal backend policy missing'
 Require-Literal $header 'WZHUDRenderBackendCoreAnimation' 'CoreAnimation backend policy missing'
 Require-Literal $header 'wzhud_render_backend_for_application_active' 'backend selector missing'
 Require-Literal $header 'wzhud_render_transition_for_application_active' 'backend transition policy missing'
+$policyStart = $header.IndexOf('wzhud_render_transition_for_application_active(bool active)', [StringComparison]::Ordinal)
+$policyEnd = $header.IndexOf('bool wzhud_set_enabled', $policyStart, [StringComparison]::Ordinal)
+$policy = $header.Substring($policyStart, $policyEnd - $policyStart)
+if ($policy.IndexOf("true,", [StringComparison]::Ordinal) -lt 0 -or
+    $policy.IndexOf("active,", [StringComparison]::Ordinal) -lt 0 -or
+    $policy.IndexOf("!active,", [StringComparison]::Ordinal) -lt 0) {
+    throw 'FAIL: inactive SpringBoard-hosted source tick can still be paused'
+}
 
 $renderStart = $bridge.IndexOf('static void render_frame_main(CFTimeInterval now)', [StringComparison]::Ordinal)
 $renderEnd = $bridge.IndexOf('static BOOL hud_interaction_ready_main', $renderStart, [StringComparison]::Ordinal)
@@ -38,6 +46,9 @@ foreach ($token in @(
 )) { Require-Literal $render $token 'shared immutable frame path missing' }
 if ($render -match 'apply_wz_snapshot_main|g_canvas\.subviews|CGPathCreateCopyByTransformingPath') {
     throw 'FAIL: render path still depends on UIKit staging or copied CGPath'
+}
+if ($render -match 'backgroundHosted[\s\S]{0,120}g_displayLink\.paused\s*=\s*YES') {
+    throw 'FAIL: a transient background CA failure permanently pauses hosted updates'
 }
 
 $caStart = $bridge.IndexOf('static BOOL present_layer_frame_main(const AXHUDImmutableFrame &frame)', [StringComparison]::Ordinal)
@@ -84,7 +95,7 @@ foreach ($token in @(
 $pausePosition = $activity.IndexOf('g_displayLink.paused = !transition.foregroundTickEnabled', [StringComparison]::Ordinal)
 $configurePosition = $activity.IndexOf('(void)configure_layer_renderer_main()', [StringComparison]::Ordinal)
 if ($pausePosition -lt 0 -or $configurePosition -lt 0 -or $pausePosition -ge $configurePosition) {
-    throw 'FAIL: background transition must pause foreground ticks before configuring CA'
+    throw 'FAIL: background transition must apply the live-tick policy before configuring CA'
 }
 
 # The five SceneDelegate callbacks stay empty; lifecycle behavior belongs to

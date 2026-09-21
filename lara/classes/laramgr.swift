@@ -544,6 +544,15 @@ final class laramgr: ObservableObject {
             return
         }
 
+        // A second launch request must reuse a live remote pair.  The old
+        // path tore the pair down and then trusted a stale cached "ready".
+        if wzhud_springboard_hosting_ready() {
+            wzGameHUDStatus = "跨 App 双窗口运行中"
+            logmsg("(wz.hud) verified SpringBoard host already running")
+            completion(true)
+            return
+        }
+
         let localDetail = String(cString: wzhud_last_error())
         logmsg("(wz.hud) local hosting unavailable (\(localDetail.isEmpty ? "none" : localDetail))；回落 SpringBoard 托管")
 
@@ -598,36 +607,51 @@ final class laramgr: ObservableObject {
 
     private func installWZSpringBoardHosting(_ remoteProcess: RemoteCall, completion: @escaping (Bool) -> Void) {
         guard wzGameHUDSessionArmed, !wzSpringBoardInstallRunning else { completion(false); return }
+        if wzhud_springboard_hosting_ready() {
+            wzGameHUDStatus = "跨 App 双窗口运行中"
+            completion(true)
+            return
+        }
         wzSpringBoardInstallRunning = true
         wzWorker.async { [weak self, remoteProcess] in
             let removed = wzhud_unregister_springboard_hosts(remoteProcess)
             if !removed {
                 self?.logmsg("(wz.hud) mode 0 unhost reported failure; continuing AX mode 1 rebuild")
             }
-            let ready = wzhud_register_springboard_hosts(remoteProcess)
+            let registered = wzhud_register_springboard_hosts(remoteProcess)
+            var ready = registered && wzhud_springboard_hosting_ready()
             let detail = String(cString: wzhud_last_error())
-            let installFailed = !ready
-            if installFailed, let self {
+            if ready {
+                usleep(1_200_000)
+                // Do not report success after a concurrent mode-0 teardown
+                // or a source-context replacement invalidated the mirrors.
+                ready = wzhud_springboard_hosting_ready()
+            }
+            if !ready, let self {
+                if registered {
+                    _ = wzhud_unregister_springboard_hosts(remoteProcess)
+                }
                 _ = self.destroyRemoteCallOnWorker(remoteProcess)
                 for pendingProcess in Array(self.wzPendingRemoteCleanup.values) {
                     _ = self.destroyRemoteCallOnWorker(pendingProcess)
                 }
             }
-            if ready { usleep(1_200_000) }
+            let verifiedReady = ready
             DispatchQueue.main.async {
                 guard let self else { return }
-                if installFailed, self.sbProc === remoteProcess {
+                let live = verifiedReady && wzhud_springboard_hosting_ready()
+                if !live, self.sbProc === remoteProcess {
                     self.sbProc = nil
                     self.rcready = false
                     self.rcLastError = detail.isEmpty ? "跨 App 双窗口托管失败" : detail
                 }
                 self.wzSpringBoardInstallRunning = false
-                defer { completion(ready && self.wzGameHUDSessionArmed && !self.wzTerminating) }
+                defer { completion(live && self.wzGameHUDSessionArmed && !self.wzTerminating) }
                 guard self.wzGameHUDSessionArmed else { return }
-                self.wzGameHUDStatus = ready
+                self.wzGameHUDStatus = live
                     ? "跨 App 双窗口运行中"
                     : (detail.isEmpty ? "跨 App 双窗口托管失败" : detail)
-                self.logmsg("(wz.hud) SpringBoard CALayerHost ready=\(ready ? "yes" : "no") error=\(detail.isEmpty ? "none" : detail)")
+                self.logmsg("(wz.hud) SpringBoard CALayerHost ready=\(live ? "yes" : "no") error=\(detail.isEmpty ? "none" : detail)")
             }
         }
     }

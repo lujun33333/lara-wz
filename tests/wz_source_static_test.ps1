@@ -52,7 +52,7 @@ Require-Text 'lara/kexploit/WZHUDBridge.mm' "BOOL menuReady = register_local_hos
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'wz_probe_hosting_classes_once' '缺少真机托管类只读探测'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'bool wzhud_springboard_hosting_ready\(void\)' '跨进程托管 readiness 缺失'
 Require-Text 'lara/kexploit/WZHUDBridge.h' 'wzhud_springboard_hosting_ready' '桥接头缺跨进程托管 readiness'
-Require-Text 'lara/kexploit/WZHUDBridge.mm' "bool wzhud_is_enabled\(void\)[\s\S]{0,220}g_localHostingReady\.load\(\)[\s\S]{0,100}g_springBoardHostingReady\.load\(\)[\s\S]{0,250}g_active\.load\(\)[\s\S]{0,250}g_windowContextIDs\[0\]" 'HUD enabled 未绑定本地或 SpringBoard 真实托管'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' "bool wzhud_is_enabled\(void\)[\s\S]{0,220}g_localHostingReady\.load\(\)[\s\S]{0,100}wzhud_springboard_hosting_ready\(\)[\s\S]{0,250}g_active\.load\(\)[\s\S]{0,250}g_windowContextIDs\[0\]" 'HUD enabled 未绑定本地或 SpringBoard 真实托管'
 Reject-Text 'lara/kexploit/WZHUDBridge.mm' "posix_spawn|--wzhud-host|WZHUDFloatWindow|g_windowContextIDs\[3\]" '仍混入 helper 或 Core 三窗口结构'
 Reject-Text 'lara/kexploit/WZHUDBridge.mm' "wzhud_(create|remove|poll)_direct_springboard|wzhud_(start|stop)_context_host_helper" '仍暴露旧远端/helper 实现'
 Reject-Text 'lara/kexploit/WZHUDBridge.mm' "static void handle_scene_activity_main\(BOOL active\)[\s\S]{0,900}if \(!active\)[\s\S]{0,450}(destroy_hud_main|unregister_local_hosting_main|g_(window|menuWindow)\.hidden = YES)" '切到游戏后仍销毁、注销或隐藏 AX 双窗口'
@@ -136,7 +136,8 @@ Require-Text 'lara/kexploit/WZHUDBridge.mm' 'summoner/%d\.jpg' 'AX 召唤师图�
 Require-Text 'lara/kexploit/WZHUDBridge.mm' '@"大图头像"' '元宝大图头像功能缺失'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' '@"野怪刷新"' '元宝野怪刷新功能缺失'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' '@"英雄技能"' '元宝英雄技能功能缺失'
-Require-Text 'lara/kexploit/WZHUDBridge.mm' '@"地图位置"' 'AX 地图位置功能缺失'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' '@"地图 X"[\s\S]{0,100}@"地图 Y"' '元宝地图位置功能缺失'
+Require-Text 'lara/kexploit/wzesp.mm' 'if \(entity\.isDead != 0\) \{[\s\S]{0,80}continue;' '发布端未在技能 HUD 前过滤死亡实体'
 Reject-Text 'lara/kexploit/WZHUDBridge.mm' '@"CORE\.|S M O B A|wzCore|rebuild_core_page|update_fallback_snapshot|present_snapshot_metal|wzhud_set_presentation' '仍残留 CORE UI 或截图渲染实现'
 Reject-Text 'lara/kexploit/WZHUDBridge.mm' '描边增强（写入）|目标追踪（写入）|自动瞄准（写入）' '菜单仍混入写入功能'
 

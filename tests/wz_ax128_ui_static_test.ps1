@@ -16,40 +16,49 @@ function Reject([string]$pattern, [string]$message) {
     if ($source -match $pattern) { throw "FAIL: $message" }
 }
 
-# Independent reference: original AX 1.2.8 executable SHA256
-# cc947605b97b90d898e784bf73dcab120c44c9281299fe840285dd67dfec1fb4.
-# Menu construction: 0x10088bef4; checkbox group: 0x1008dfbbc;
-# sliders: 0x100952488 / 0x100969dd8; geometry: 0x100a5960c.
-Require 'CGRectMake\(0,0,560,360\)' 'AX panel dimensions changed'
-Require 'CGRectMake\(0,3,126,319\)' 'AX sidebar dimensions changed'
-Require 'CGRectMake\(127,3,433,319\)' 'AX content dimensions changed'
-Require 'CGRectMake\(0,322,560,38\)' 'AX footer dimensions changed'
-Require '@\[@"绘制功能",@"进阶功能",@"设置功能"\]' 'AX page order changed'
-Require '@"AX PRO  ·  CONTROL PANEL"' 'AX footer title missing'
-Require '@"VERSION 1\.2\.8"' 'AX version caption missing'
+# Yuanbao/Qingtian menu policy: three pages, responsive phone layout and
+# explicit unsupported write pages in this read-only build.
+Require 'qingtian_layout_for_bounds' 'Qingtian responsive layout is missing'
+Require 'availableWidth=phone \? width\*\.80' 'Qingtian phone width policy changed'
+Require 'baseWidth=phone \? fmin\(780,fmax\(540,availableWidth\)\)' 'Qingtian width clamp changed'
+Require '@\[@"绘制",@"自瞄",@"自瞄调试"\]' 'Qingtian page order changed'
+Require '@"绘制设置"' 'Qingtian drawing page title missing'
+Require '@"屏幕元素与位置调整"' 'Qingtian drawing subtitle missing'
+Require '@"设置即时生效"' 'Qingtian footer state missing'
 Require '@"退出 HUD"' 'AX exit action missing'
 Require 'setTitle:@"×"' 'Panel-only close button is missing'
 Require 'kWZHUDControlHide' 'Panel-only close action is missing'
 Require 'set_panel_visible_main\(NO\)' 'Panel-only close does not collapse to the floating button'
 Require 'g_floatButton\.layer\.cornerRadius=20' 'AX floating button is not circular'
-Require 'CGRectGetWidth\(bounds\)-30,CGRectGetHeight\(bounds\)\*\.5' 'AX initial floating center changed'
+Require 'clamp_float_center' 'Floating control is not clamped to logical bounds'
+Require 'g_floatSavedCenter\.x/CGRectGetWidth\(oldLogical\)\*CGRectGetWidth\(logical\)' 'Floating control is not normalized across rotation'
+Require 'center\.y=fmin\(CGRectGetHeight\(logical\)-half,fmax\(half,center\.y\)\)' 'Floating control can remain outside landscape bounds'
+Require 'commit_menu_window_geometry_main\(\);[\s\S]{0,80}\[CATransaction flush\]' 'Rotated menu geometry is not committed to the hosted context'
 Reject 'CGRectMake\(0,\s*0,\s*900,\s*600\)|wzCore|@"CORE\.|S M O B A|WZHUDTouchProxy|update_fallback_snapshot|present_snapshot_metal' 'CORE presentation residue present'
 Reject 'NSUserDefaults' 'AX settings incorrectly use UserDefaults'
 
 foreach ($title in @('调试窗口','屏幕捕获','大图头像','小图兵线',
                     '小图头像','野怪刷新','英雄技能','英雄方框',
-                    '自动功能','人物视野','斩杀敌人','斩杀坐标设置',
-                    '自身视野暴露点(兵线)','自身视野暴露点(敌人)','小地图敌人视野',
-                    '技能大小','技能位置X','技能位置Y','地图大小','地图位置')) {
+                    '屏幕绘制','位置与视距','恢复位置',
+                    '技能 X','技能 Y','地图 X','地图 Y')) {
     Require ([regex]::Escape('@"' + $title + '"')) "AX control missing: $title"
 }
 Reject '@"大地图射线"|@"小地图血量"|@"小地图回城"' 'Non-Yuanbao independent drawing toggles remain'
+Require '当前只读构建未接入' 'Unsupported write pages are not explicit'
+Reject '@"斩杀敌人"|@"地图内透"|@"自瞄开关"' 'Unsupported write controls are presented as functional'
 Require 'defaults\[\] = \{[\s\S]{0,80}50,-57,10,150,MAX\(0\.0f,logicalWidth-150\.0f-10\.0f\)' 'Yuanbao coordinate defaults changed'
 Require 'minima\[\] = \{0,-300,0,0,0\}' 'Yuanbao skill X slider cannot represent -57'
-Require 'if \(ax_bool\(@"bigmapimage"\)\)[\s\S]{0,100}WZESP_SHOW_AVATAR \| WZESP_SHOW_RAY' 'Yuanbao big portrait no longer owns the merged ray behavior'
-Require 'if \(ax_bool\(@"shiye\.hero"\)\) flags \|= WZESP_SHOW_HERO_VISION' 'Hero exposure key is not independent'
-Require 'if \(ax_bool\(@"shiye\.soldier"\)\) flags \|= WZESP_SHOW_SOLDIER_VISION' 'Soldier exposure key is not independent'
-Require 'item\.primitive==WZESP_PRIMITIVE_EXPOSURE_POINT[\s\S]{0,800}primitiveColorRGBA' 'Exposure primitive is not rendered'
+Require 'if \(ax_bool\(@"bigmapimage"\)\) flags \|= WZESP_SHOW_AVATAR' 'heroEnabled is not bound to the world portrait consumer'
+Reject 'if \(ax_bool\(@"bigmapimage"\)\)[^;]*WZESP_SHOW_RAY' 'Yuanbao big portrait incorrectly enables a ray'
+Require 'if \(ax_bool\(@"draw"\)\)[\s\S]{0,100}WZESP_SHOW_MINIMAP \| WZESP_SHOW_HEALTH \| WZESP_SHOW_RECALL' 'avatarEnabled is not bound to minimap portrait/health/recall'
+Require 'g_captureProtected\.store\(ax_bool\(@"stream"\)\)' 'liveBypassEnabled is not bound to capture protection'
+Require 'ax_bool\(@"debug"\)[^;]*WZESP_SHOW_MAP_ADJUSTMENT' 'debugOverlayEnabled consumer is missing'
+Require 'ax_bool\(@"soldier"\)[^;]*WZESP_SHOW_SOLDIER' 'soldierEnabled consumer is missing'
+Require 'ax_bool\(@"monster"\)[^;]*WZESP_SHOW_MONSTER \| WZESP_SHOW_MONSTER_TIMER' 'monsterEnabled consumer is missing'
+Require 'ax_bool\(@"skill"\)[^;]*WZESP_SHOW_SKILL' 'skillEnabled consumer is missing'
+Require 'ax_bool\(@"box"\)[^;]*WZESP_SHOW_BOX' 'boxEnabled consumer is missing'
+Require '\[key isEqualToString:@"draw"\][\s\S]{0,100}\[key isEqualToString:@"monster"\]' 'OwnFeatureConfig default toggles changed'
+Require 'tag==43000[\s\S]{0,400}@"skill\.x",@\(-57\)[\s\S]{0,200}@"skill\.y",@\(10\)[\s\S]{0,200}@"mapsize",@\(139\)[\s\S]{0,200}@"mapx",@\(52\)' 'OwnQingtian restore-position values changed'
 
 # Keychain service: 0x10001d370; read: 0x10000ccd8; write: 0x10000fe1c.
 Require 'stringByAppendingString:@"\.ax-settings"' 'AX settings service suffix changed'
@@ -58,7 +67,7 @@ Require 'kSecMatchLimitOne' 'AX settings query does not request one result'
 Require 'NSPropertyListBinaryFormat_v1_0' 'AX settings binary plist encoding missing'
 Require 'kSecAttrAccessibleAfterFirstUnlock' 'AX keychain accessibility changed'
 Require 'SecItemUpdate[\s\S]{0,200}errSecItemNotFound[\s\S]{0,250}SecItemAdd' 'AX keychain update/add sequence changed'
-Require 'g_captureKillPoint && phase==WZHUDPointerPhaseBegan[\s\S]{0,800}click_coord_x[\s\S]{0,500}click_coord_y[\s\S]{0,500}ax_store_setting\(@"click_coord_space",@"fixed"\)' 'Physical coordinate capture is not persisted in fixed space'
+Reject 'ax_bool\(@"auto\.kill"\)|ax_bool\(@"shiye\.|click_coord_space' 'Unsupported write/vision consumers remain active behind the Yuanbao UI'
 Require 'objc_getClass\("FBSOrientationObserver"\)' 'AX orientation observer missing'
 Require 'NSSelectorFromString\(@"activeInterfaceOrientation"\)' 'AX authoritative orientation getter missing'
 Require 'FrontBoardServices\.framework/FrontBoardServices' 'FrontBoardServices is not loaded before creating the orientation observer'
@@ -83,8 +92,9 @@ Require 'move_panel_main\(\[gesture translationInView:g_menuCanvas\]\)' 'UIKit/H
 Require 'NSTimeInterval duration=\.3' 'AX observer fallback animation duration changed'
 Require '@\[@"orientation",@"duration"\]' 'AX observer update fields missing'
 Require 'item.screenY - 50\.0' 'AX world box offset changed'
-Require 'CGPointMake\(width \* 0\.5, height \* 0\.5\)' 'AX ray origin is not screen center'
-Require 'config.minimapSize / 15\.4f' 'AX world portrait radius changed'
+Require 'const float centerY = item\.screenY - 20\.0f' 'Yuanbao world portrait anchor changed'
+Require 'const float portraitRadius = 6\.0f' 'Yuanbao world portrait radius changed'
+Require 'ax_push_circle\(commands, center, 7\.8f' 'Yuanbao world health circle missing'
 Require 'config.minimapSize / 17\.0f' 'AX minimap portrait radius changed'
 Require 'healthRing.lineWidth = 1\.8' 'AX health arc width changed'
 Require 'endAngle:\(CGFloat\)\(-M_PI_2\+M_PI\*2\.0\*fmin\(1\.0,fmax\(0\.0,healthRatio\)\)\)' 'Health arc must be encoded in the path for both backends'
@@ -133,17 +143,17 @@ Require '@"AXHUDBackgroundContent"' 'AX CA root name changed'
 Require '@"Rajdhani-Bold"' 'AX font missing'
 Require 'attempt<3 && data\.length<=1000' 'AX image retry or minimum-data boundary changed'
 Require 'CFAbsoluteTimeGetCurrent\(\)\+5\.0' 'AX image failure cooldown changed'
-Require 'rowX=config\.skillX\+\(size\+3\)\*skillIndex' 'AX skill row spacing is not consumed'
-Require 'smallSize=\(size-5\)/2\.5' 'AX skill status dimensions changed'
-Require 'summonerY=heroY\+size\+2' 'AX skill icon vertical stacking changed'
-Require 'alpha:118\.0/255\.0' 'AX skill cooldown overlay opacity changed'
+Require '\(width-112\.0f\)\*\.5f\+config\.skillX\+[\s\S]{0,50}24\.0f\*skillIndex' 'Yuanbao skill anchor/spacing changed'
+Require 'const float y=config\.skillY\+20\.0f' 'Yuanbao skill Y anchor changed'
+Require 'CGRectMake\(x-8,y-8,16,16\)' 'Yuanbao hero skill portrait size changed'
+Require 'CGRectMake\(x-8,y\+16,16,16\)' 'Yuanbao summoner icon offset changed'
 Require 'wzax_touch_start\(\)' 'AX touch sender is never started by the HUD'
 Reject 'wzax_touch_set_host|remoteDispatch|remoteCreateEvent|remoteCreateClient' 'touch sender still carries the removed cross-process transport'
 Require 'kCALineCapButt' 'AX default line cap changed'
 Require 'kCALineJoinRound' 'AX default line join changed'
 Require 'kCAGravityResizeAspectFill' 'AX image gravity changed'
 Require 'CGRectInset\(anchor,\s*-4,\s*-4\)' 'AX compact interaction padding changed'
-Require 'wantsCompact = !g_springBoardHostingReady\.load\(\) &&[\s\S]{0,160}!g_panelVisible && !g_hudContentRequiresFullScreen &&[\s\S]{0,120}!hud_pointer_active\(\) && !hud_geometry_transitions_active\(\)' 'Hosted menu context can still collapse and clip the floating button'
+Require 'wantsCompact = !wzhud_springboard_hosting_ready\(\) &&[\s\S]{0,160}!g_panelVisible && !g_hudContentRequiresFullScreen &&[\s\S]{0,120}!hud_pointer_active\(\) && !hud_geometry_transitions_active\(\)' 'Hosted menu context can still collapse and clip the floating button'
 Require 'g_hudCompactGeometryApplied = wantsCompact' 'Compact geometry state is not recorded'
 Require 'visible \? \.22 : \.18' 'AX panel animation duration changed'
 Require 'CGAffineTransformMakeScale\(\.94,\.94\)' 'AX panel animation scale changed'
