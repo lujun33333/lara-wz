@@ -40,10 +40,10 @@ Require-Pending 'action\.kind == Kind::Moved[\s\S]{0,260}actions_\.back\(\)[\s\S
 Require-Pending 'it->kind == Kind::AtomicGesture[\s\S]{0,180}actions_\.erase\(it\)[\s\S]{0,360}result\.lifecycleDropped = true[\s\S]{0,180}actions_\.clear\(\)' 'AX kind-3 prune / lifecycle batch-clear order changed'
 if ($pending -match 'maxDepth|Kind::Cancelled|activePointers_') { throw 'FAIL: guessed depth/cancel/pointer-state policy returned' }
 Require-Bridge 'dispatch_queue_create\("com\.coldcheat\.simtouch", DISPATCH_QUEUE_SERIAL\)' 'AX pending actions are not confined to the recovered serial queue'
-Require-Bridge 'paths\.firstObject\.pathIdentity' 'AX pathIdentity is not used as pointerID'
+Require-Bridge 'for \(WZHUDAXEventPath \*path in paths\)[\s\S]{0,120}path\.pathIdentity[\s\S]{0,220}paths\.count != 1[\s\S]{0,120}pointerIDs\.firstObject\.longLongValue' 'AX pathIdentity is not preserved for multi-pointer chords and single-pointer dispatch'
 Require-Bridge 'pending_kind\(phase, &kind\)[\s\S]{0,260}fail-closed reset pointer' 'Physical Cancel must fail closed instead of being guessed as AX kind 3'
 Require-Bridge 'PendingTouchAction pending\{[\s\S]{0,180}pointerID[\s\S]{0,180}kind[\s\S]{0,180}expirationTime[\s\S]{0,180}generation' 'HID callback does not create a structured pending action'
-Require-Bridge 'timestamp=CFAbsoluteTimeGetCurrent\(\)[\s\S]{0,240}timestamp \+ wzhud_pending_touch::kExpirationInterval' 'AX CFAbsoluteTime + 0.75 expiration source changed'
+Require-Bridge 'timestamp=CFAbsoluteTimeGetCurrent\(\)[\s\S]{0,1200}timestamp \+ wzhud_pending_touch::kExpirationInterval' 'AX CFAbsoluteTime + 0.75 expiration source changed'
 Require-Pending 'canExecute\(const PendingTouchAction &action,[\s\S]{0,520}now < action\.expirationTime[\s\S]{0,240}action\.generation == currentGeneration' 'Execution policy does not recheck expiration and generation'
 Require-Bridge 'popNext\(CFAbsoluteTimeGetCurrent\(\), generation,[\s\S]{0,120}&action, &expiredPointerID\)[\s\S]{0,1200}canExecute\(' 'Expiration is not rechecked before main-thread execution'
 Require-Bridge 'expiredLifecycle[\s\S]{0,700}finish_expired_lifecycle_pointer_main\(pending->pointerID\)[\s\S]{0,300}g_pendingTouchActions\.discardAll\(\)' 'Expired AX lifecycle does not clear the queued batch and retained HUD pointer'

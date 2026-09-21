@@ -36,16 +36,17 @@ Require 'CGRectGetWidth\(bounds\)-30,CGRectGetHeight\(bounds\)\*\.5' 'AX initial
 Reject 'CGRectMake\(0,\s*0,\s*900,\s*600\)|wzCore|@"CORE\.|S M O B A|WZHUDTouchProxy|update_fallback_snapshot|present_snapshot_metal' 'CORE presentation residue present'
 Reject 'NSUserDefaults' 'AX settings incorrectly use UserDefaults'
 
-foreach ($title in @('小地图绘制','小地图血量','小地图回城','小地图野怪','小地图兵线',
-                    '召唤师技能','大地图射线','大地图方框','大地图头像',
+foreach ($title in @('调试窗口','屏幕捕获','大图头像','小图兵线',
+                    '小图头像','野怪刷新','英雄技能','英雄方框',
                     '自动功能','人物视野','斩杀敌人','斩杀坐标设置',
                     '自身视野暴露点(兵线)','自身视野暴露点(敌人)','小地图敌人视野',
-                    '技能大小','技能位置X','技能位置Y','地图大小','地图位置',
-                    '过直播（开启后截图/录屏隐藏）')) {
+                    '技能大小','技能位置X','技能位置Y','地图大小','地图位置')) {
     Require ([regex]::Escape('@"' + $title + '"')) "AX control missing: $title"
 }
-Require 'maxima\[\] = \{70,400,300,300,250\}' 'AX slider limits changed'
-Require 'index == 2 \? 0 : 50' 'AX slider defaults changed'
+Reject '@"大地图射线"|@"小地图血量"|@"小地图回城"' 'Non-Yuanbao independent drawing toggles remain'
+Require 'defaults\[\] = \{[\s\S]{0,80}50,-57,10,150,MAX\(0\.0f,logicalWidth-150\.0f-10\.0f\)' 'Yuanbao coordinate defaults changed'
+Require 'minima\[\] = \{0,-300,0,0,0\}' 'Yuanbao skill X slider cannot represent -57'
+Require 'if \(ax_bool\(@"bigmapimage"\)\)[\s\S]{0,100}WZESP_SHOW_AVATAR \| WZESP_SHOW_RAY' 'Yuanbao big portrait no longer owns the merged ray behavior'
 Require 'if \(ax_bool\(@"shiye\.hero"\)\) flags \|= WZESP_SHOW_HERO_VISION' 'Hero exposure key is not independent'
 Require 'if \(ax_bool\(@"shiye\.soldier"\)\) flags \|= WZESP_SHOW_SOLDIER_VISION' 'Soldier exposure key is not independent'
 Require 'item\.primitive==WZESP_PRIMITIVE_EXPOSURE_POINT[\s\S]{0,800}primitiveColorRGBA' 'Exposure primitive is not rendered'
@@ -67,7 +68,11 @@ Reject 'if \(g_orientation==orientation\) return;' 'Repeated orientation sync st
 Require 'g_orientation==orientation &&[\s\S]{0,160}CGRectEqualToRect\(g_orientationSurfaceBounds,physical\)[\s\S]{0,160}CGRectEqualToRect\(g_orientationLogicalBounds,logical\)' 'Same-orientation sync does not refresh changed surface geometry'
 Require 'g_captureProtected\.store\(ax_bool\(@"stream"\)\)' 'Live-stream capture policy is not backed by the stream setting'
 Require 'g_captureProtected\.load\(\) \? 0x12 : 0' 'Capture mask is not disabled by default and enabled only for live-stream protection'
-Reject 'CMMotionManager|g_threeFinger|orientation_poll_timer|core_|wzCore' 'Non-AX orientation/input implementation remains'
+Require 'g_hidActivePointerIDs\.insert\(value\.longLongValue\)\.second' 'Global HID chord does not track distinct pointer identities'
+Require 'g_hidActivePointerIDs\.size\(\) >= 3[\s\S]{0,180}!g_hidThreeFingerLatched' 'Third distinct HID pointer does not latch once'
+Require 'set_panel_visible_main\(!g_panelVisible\)' 'Global HID three-finger chord does not toggle the AX panel'
+Require 'phase == WZHUDPointerPhaseEnded \|\|[\s\S]{0,100}phase == WZHUDPointerPhaseCancelled[\s\S]{0,180}g_hidActivePointerIDs\.erase' 'HID pointer identities are not cleared on end/cancel'
+Reject 'CMMotionManager|orientation_poll_timer|core_|wzCore' 'Non-AX orientation/input implementation remains'
 
 # CA renderer: 0x10074d6b0..0x1007666a8. No full-frame snapshot bridge.
 Require 'MTLPixelFormatRGBA8Unorm' 'AX per-image texture format changed'
@@ -138,7 +143,7 @@ Require 'kCALineCapButt' 'AX default line cap changed'
 Require 'kCALineJoinRound' 'AX default line join changed'
 Require 'kCAGravityResizeAspectFill' 'AX image gravity changed'
 Require 'CGRectInset\(anchor,\s*-4,\s*-4\)' 'AX compact interaction padding changed'
-Require 'wantsCompact = !g_panelVisible && !g_hudContentRequiresFullScreen &&[\s\S]{0,120}!hud_pointer_active\(\) && !hud_geometry_transitions_active\(\)' 'Compact geometry ignores active interactions'
+Require 'wantsCompact = !g_springBoardHostingReady\.load\(\) &&[\s\S]{0,160}!g_panelVisible && !g_hudContentRequiresFullScreen &&[\s\S]{0,120}!hud_pointer_active\(\) && !hud_geometry_transitions_active\(\)' 'Hosted menu context can still collapse and clip the floating button'
 Require 'g_hudCompactGeometryApplied = wantsCompact' 'Compact geometry state is not recorded'
 Require 'visible \? \.22 : \.18' 'AX panel animation duration changed'
 Require 'CGAffineTransformMakeScale\(\.94,\.94\)' 'AX panel animation scale changed'
