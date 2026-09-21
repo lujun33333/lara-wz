@@ -21,12 +21,17 @@ Require 'Ref \(\*createVirtual\)\(Ref, CFDictionaryRef, const VirtualCallbacksV2
 Require 'serviceProperties\(\), &callbacks, token, token\)' 'VirtualService properties/generation arguments missing'
 Require 'token != generation \|\| service != virtualService' 'Late service notification may activate a replacement host'
 Require 'CFNumberGetValue\(\(CFNumberRef\)value, kCFNumberSInt64Type, &result\)' 'Registry ID must be converted from CFNumber'
-# 0x1006fa168 dispatches locally: AX Pro v1.2.8 builds the HID event in-process
-# and hands it to its own IOHIDEventSystemClientDispatchEvent. There is no
-# serialized transfer, no remote reconstruction, and no RemoteCall host.
+# Local hosting dispatches in-process. SpringBoard-hosted surfaces serialize
+# the same event and dispatch it through the verified host retained by the HUD.
 Require 'AX_HID\(dispatchEvent, "IOHIDEventSystemClientDispatchEvent"\)' 'Local IOHID dispatch symbol is not resolved'
 Require 'bool dispatchLocal\(Ref event\)[\s\S]{0,220}api\.dispatchEvent\(localClient, event\)' 'Local dispatch does not use our own system client'
-Require 'const bool result = dispatchLocal\(parent\)' 'Parent event is not dispatched locally'
+Require 'AX_HID\(remoteCreateEvent, "IOHIDEventCreateWithData"\)' 'Remote event reconstruction symbol is not resolved'
+Require 'AX_HID\(remoteCreateClient, "IOHIDEventSystemClientCreate"\)' 'Remote event-system client symbol is not resolved'
+Require 'AX_HID\(remoteDispatch, "IOHIDEventSystemClientDispatchEvent"\)' 'Remote dispatch symbol is not resolved'
+Require 'if \(host\)[\s\S]{0,180}api\.createData\(nullptr, parent\)[\s\S]{0,120}transmit\(data\)[\s\S]{0,180}else \{[\s\S]{0,120}dispatchLocal\(parent\)' 'Hosting mode does not select exactly one HID dispatch transport'
+Require 'bool transmit\(CFDataRef bytes\)[\s\S]{0,1000}remote_write:[\s\S]{0,700}IOHIDEventCreateWithData[\s\S]{0,900}IOHIDEventSystemClientDispatchEvent' 'SpringBoard HID serialization/dispatch chain is incomplete'
+Require-Header 'bool wzax_touch_set_host\(RemoteCall \*host\)' 'SpringBoard touch host API missing'
+Require-Bridge 'wzax_touch_set_host\(remoteCall\)' 'Verified SpringBoard host is not connected to touch sender'
 Require 'attribute\(parent, 0xb0007, values.parentMask\)' 'Parent phase mask is absent'
 Require 'attribute\(parent, 0xb0016, 1\)' 'Parent integrated-display attribute is absent'
 Require 'api\.append\(parent, finger, 1\)' 'AX parent append options changed'
@@ -56,7 +61,8 @@ Require 'if \(NSThread\.isMainThread\) readSurface\(\);[\s\S]{0,120}dispatch_syn
 Require 'bool convertToFixedPoint[\s\S]{0,700}if \(NSThread\.isMainThread\) convert\(\);[\s\S]{0,120}dispatch_sync\(dispatch_get_main_queue\(\), convert\)' 'Shared UIKit fixed-space conversion is performed off the main thread'
 $fixedConversions = [regex]::Matches($source, 'convertToFixedPoint\(x, y, fixedSpace, &fixed\)').Count
 if ($fixedConversions -ne 4) { throw "FAIL: tap/begin/move/end must share fixed-space conversion, got $fixedConversions call sites" }
-if ($source -match 'api\.remoteDispatch\s*\(') { throw 'FAIL: Remote dispatch called in local process' }
+Require 'start failed stage=create-client mode=%s' 'Touch start does not report client creation stage'
+Require 'start failed stage=create-service mode=%s' 'Touch start does not report virtual-service creation stage'
 Require-Pending 'struct PendingTouchAction[\s\S]{0,280}pointerID[\s\S]{0,160}kind[\s\S]{0,160}expirationTime[\s\S]{0,220}actionBlock' 'Pending touch action does not preserve AX fields'
 Require-Pending 'AtomicGesture = 3' 'AX kind 3 must remain the point-only/timed gesture kind, not physical Cancel'
 Require-Pending 'kExpirationInterval = 0\.75' 'AX 0x10087b06c expiration interval changed'

@@ -28,6 +28,8 @@ Need 'UIControlEventTouchUpInside[\s\S]{0,100}UIControlEventTouchUpOutside' 'phy
 Need 'UIControlEventTouchCancel' 'physical skill cancellation is not handled'
 Need 'handle_panel_pointer_main\(calibration\.center,WZHUDPointerPhaseBegan,pointerID\)' 'the calibrated skill TouchDown does not enter the shared begin path'
 Need 'renderTick:[\s\S]{0,180}g_aimSyntheticDragActive\) move_aim_touch_drag_main\(\)' '60 Hz target tracking does not drive synthetic Move'
+Need 'kWZAimTouchMoveInterval = 1\.0 / 30\.0' 'remote aim drag move cadence is no longer bounded at 30 Hz'
+Need 'now - g_aimLastMoveSubmitAt < kWZAimTouchMoveInterval' 'aim drag does not throttle remote HID move submissions'
 Need 'wzax_touch_drag_end_async' 'physical End is not forwarded as synthetic Up'
 Need 'wzax_touch_drag_cancel_async' 'cancel path does not terminate the synthetic drag'
 Need 'aim_touch_begin_completion[\s\S]{0,300}dispatch_async\(dispatch_get_main_queue\(\)' 'failed async Down does not clean state on the main queue'
