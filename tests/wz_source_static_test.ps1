@@ -197,6 +197,16 @@ Require-Count 'lara/kexploit/WZHUDBridge.mm' 'hud_apply_full_screen_geometry\(\)
 Require-Count 'lara/kexploit/WZHUDBridge.mm' 'hud_apply_compact_geometry\(\)' 1 '紧凑几何未被调用'
 Reject-Text 'lara/kexploit/WZHUDBridge.mm' 'g_geometryTransitions' '仍保留 AX 没有的过渡计数器'
 
+# ── 底层：allproc 是唯一必要符号，其余 base 项保持可选兼容 ──────────────
+Reject-Text 'lara/kexploit/offsets.m' 'if \(\s*!kernproc\s*\|\|\s*!rootvnode\s*\)' 'resolvekernoffsets 仍硬要求 kernproc/rootvnode'
+Reject-Text 'lara/kexploit/offsets.m' 'if \(\s*kernproc < gXPF\.kernelBase\s*\|\|\s*rootvnode < gXPF\.kernelBase\s*\)' '可选符号仍被当成无效即失败的门槛'
+Require-Text 'lara/kexploit/offsets.m' 'if \(gXPF\.kernelBase == 0 \|\| allproc <= gXPF\.kernelBase\)[\s\S]{0,700}xpf_stop\(\);[\s\S]{0,80}return false;' 'allproc 缺失或非法时未停止 XPF 并失败返回'
+Require-Text 'lara/kexploit/offsets.m' 'kernproc != 0 && kernproc >= gXPF\.kernelBase\)[\s\r\n]*\? kernproc - gXPF\.kernelBase : 0;' 'kernproc 偏移计算缺少防零值/下溢保护'
+Require-Text 'lara/kexploit/offsets.m' 'rootvnode != 0 && rootvnode >= gXPF\.kernelBase\)[\s\r\n]*\? rootvnode - gXPF\.kernelBase : 0;' 'rootvnode 偏移计算缺少防零值/下溢保护'
+Require-Text 'lara/kexploit/offsets.m' 'if \(kernprocoff != 0\)[\s\S]{0,180}setObject:@\(kernprocoff\)[\s\S]{0,180}else[\s\S]{0,120}removeObjectForKey:kkernprockey' 'kernproc 缺失时未清理陈旧 defaults'
+Require-Text 'lara/kexploit/offsets.m' 'if \(rootvnodeoff != 0\)[\s\S]{0,180}setObject:@\(rootvnodeoff\)[\s\S]{0,180}else[\s\S]{0,120}removeObjectForKey:krootvnodekey' 'rootvnode 缺失时未清理陈旧 defaults'
+Require-Text 'lara/kexploit/offsets.m' 'if \(procsize != 0\)[\s\S]{0,180}setObject:@\(procsize\)[\s\S]{0,180}else[\s\S]{0,120}removeObjectForKey:kkernprocsize' 'procsize 缺失时未清理陈旧 defaults'
+
 # ── 底层：T1SZ_BOOT 首选 XPF，取不到交给实测校准（不得硬失败）──────────
 Require-Text 'lara/kexploit/offsets.m' 'if \(resolvedt1szboot != 0\)[\s\S]{0,320}refreshpacmask\(\);' 'T1SZ_BOOT 未从 XPF 采纳'
 Require-Text 'lara/kexploit/utils.m' 'void init_offsets\(void\)[\s\S]{0,1800}fixed structure offsets only' 'init_offsets 缺少单一 XPF 生命周期说明'
