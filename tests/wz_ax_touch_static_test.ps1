@@ -1,10 +1,14 @@
 ﻿$ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $source = Get-Content -LiteralPath (Join-Path $root 'lara/kexploit/wz/WZAXTouch.mm') -Raw -Encoding UTF8
+$header = Get-Content -LiteralPath (Join-Path $root 'lara/kexploit/wz/WZAXTouch.h') -Raw -Encoding UTF8
 $bridge = Get-Content -LiteralPath (Join-Path $root 'lara/kexploit/WZHUDBridge.mm') -Raw -Encoding UTF8
 $pending = Get-Content -LiteralPath (Join-Path $root 'lara/kexploit/wz/WZHUDPendingTouchQueue.h') -Raw -Encoding UTF8
 function Require([string]$pattern, [string]$message) {
     if ($source -notmatch $pattern) { throw "FAIL: $message" }
+}
+function Require-Header([string]$pattern, [string]$message) {
+    if ($header -notmatch $pattern) { throw "FAIL: $message" }
 }
 function Require-Bridge([string]$pattern, [string]$message) {
     if ($bridge -notmatch $pattern) { throw "FAIL: $message" }
@@ -28,9 +32,30 @@ Require 'attribute\(parent, 0xb0016, 1\)' 'Parent integrated-display attribute i
 Require 'api\.append\(parent, finger, 1\)' 'AX parent append options changed'
 Require 'oldVirtual\) \{ api\.removeVirtual\(oldVirtual\); CFRelease\(oldVirtual\); \}' 'Virtual service cleanup order changed'
 Require 'oldClient\) \{ api\.cancel\(oldClient\); CFRelease\(oldClient\); \}' 'System client cleanup order changed'
-Require 'tapPending\.compare_exchange_strong' 'Tap submission must not wait synchronously behind remote dispatch'
+Require-Header 'wzax_touch_drag_begin_async' 'Drag begin API missing'
+Require-Header 'wzax_touch_drag_move_async' 'Drag move API missing'
+Require-Header 'wzax_touch_drag_end_async' 'Drag end API missing'
+Require-Header 'wzax_touch_drag_cancel_async' 'Drag cancel API missing'
+Require-Header 'bool wzax_touch_is_ready\(void\)' 'Read-only sender readiness API missing'
+Require 'bool wzax_touch_is_ready\(void\) \{[\s\S]{0,100}return ready\.load\(std::memory_order_acquire\);[\s\S]{0,20}\}' 'Sender readiness API is not the real notification-backed atomic state'
+Require-Header 'ownsSession\(uint64_t senderGeneration,[\s\S]{0,120}uint64_t session, uint64_t reservation' 'Touch session generation policy missing'
+Require 'std::atomic<uint64_t> touchReservation' 'Tap and drag do not share one exclusive reservation'
+Require 'std::atomic<uint64_t> nextTouchSession' 'Each tap/drag does not receive a unique session token'
+Require 'touchReservation\.compare_exchange_strong' 'Touch submission must remain nonblocking'
+if ($source -match '\btapPending\b') { throw 'FAIL: separate tap reservation permits tap/drag interleaving' }
+Require 'dragAcceptingSession\.compare_exchange_strong' 'Drag begin does not open one lifecycle session'
+Require 'dragAcceptingSession\.exchange\(0' 'Drag terminal does not close submissions atomically'
+Require 'ownsCurrentSession\(senderGeneration, session\)' 'Queued actions do not reject stale sender/session pairs'
+Require 'send\(fixed\.x, fixed\.y, wzax_touch_policy::Down\)[\s\S]{0,260}dragActive = true[\s\S]{0,180}dragSenderGeneration = senderGeneration[\s\S]{0,100}dragSession = session' 'Drag begin does not establish the active contact'
+Require 'send\(fixed\.x, fixed\.y, wzax_touch_policy::Move\)' 'Drag move HID phase missing'
+Require 'send\(releaseX, releaseY, wzax_touch_policy::Up\)[\s\S]{0,220}dragActive = false' 'Drag terminal does not release its contact'
+Require 'wzax_touch_drag_cancel_async[\s\S]{0,180}enqueueDragTerminal\(CGPointZero, true' 'Drag cancel does not release at the last submitted point'
+Require 'void clear\(\) \{[\s\S]{0,420}releaseActiveDrag\(\);[\s\S]{0,120}\+\+generation' 'Shutdown does not release the active contact before invalidating its generation'
+Require 'void releaseActiveDrag\(\)[\s\S]{0,180}send\(dragLastX, dragLastY, wzax_touch_policy::Up\)' 'Shutdown release does not use the active drag coordinates'
 Require 'if \(NSThread\.isMainThread\) readSurface\(\);[\s\S]{0,120}dispatch_sync\(dispatch_get_main_queue\(\), readSurface\)' 'UIScreen surface metrics are read off the main thread'
-Require 'if \(NSThread\.isMainThread\) convert\(\);[\s\S]{0,120}dispatch_sync\(dispatch_get_main_queue\(\), convert\)' 'UIKit coordinate conversion is performed off the main thread'
+Require 'bool convertToFixedPoint[\s\S]{0,700}if \(NSThread\.isMainThread\) convert\(\);[\s\S]{0,120}dispatch_sync\(dispatch_get_main_queue\(\), convert\)' 'Shared UIKit fixed-space conversion is performed off the main thread'
+$fixedConversions = [regex]::Matches($source, 'convertToFixedPoint\(x, y, fixedSpace, &fixed\)').Count
+if ($fixedConversions -ne 4) { throw "FAIL: tap/begin/move/end must share fixed-space conversion, got $fixedConversions call sites" }
 if ($source -match 'api\.remoteDispatch\s*\(') { throw 'FAIL: Remote dispatch called in local process' }
 Require-Pending 'struct PendingTouchAction[\s\S]{0,280}pointerID[\s\S]{0,160}kind[\s\S]{0,160}expirationTime[\s\S]{0,220}actionBlock' 'Pending touch action does not preserve AX fields'
 Require-Pending 'AtomicGesture = 3' 'AX kind 3 must remain the point-only/timed gesture kind, not physical Cancel'
@@ -40,16 +65,23 @@ Require-Pending 'action\.kind == Kind::Moved[\s\S]{0,260}actions_\.back\(\)[\s\S
 Require-Pending 'it->kind == Kind::AtomicGesture[\s\S]{0,180}actions_\.erase\(it\)[\s\S]{0,360}result\.lifecycleDropped = true[\s\S]{0,180}actions_\.clear\(\)' 'AX kind-3 prune / lifecycle batch-clear order changed'
 if ($pending -match 'maxDepth|Kind::Cancelled|activePointers_') { throw 'FAIL: guessed depth/cancel/pointer-state policy returned' }
 Require-Bridge 'dispatch_queue_create\("com\.coldcheat\.simtouch", DISPATCH_QUEUE_SERIAL\)' 'AX pending actions are not confined to the recovered serial queue'
-Require-Bridge 'for \(WZHUDAXEventPath \*path in paths\)[\s\S]{0,120}path\.pathIdentity[\s\S]{0,220}paths\.count != 1[\s\S]{0,120}pointerIDs\.firstObject\.longLongValue' 'AX pathIdentity is not preserved for multi-pointer chords and single-pointer dispatch'
+$pathLoop = $bridge.IndexOf('for (WZHUDAXEventPath *path in paths)', [StringComparison]::Ordinal)
+$pathIdentity = $bridge.IndexOf('path.pathIdentity', $pathLoop, [StringComparison]::Ordinal)
+$multiPath = $bridge.IndexOf('if (paths.count != 1)', $pathIdentity, [StringComparison]::Ordinal)
+$singlePath = $bridge.IndexOf('pointerIDs.firstObject.longLongValue', $multiPath, [StringComparison]::Ordinal)
+if ($pathLoop -lt 0 -or $pathIdentity -lt 0 -or $multiPath -lt 0 -or
+    $singlePath -lt 0 -or $singlePath - $pathLoop -gt 1800) {
+    throw 'FAIL: AX pathIdentity is not preserved for multi-pointer chords and single-pointer dispatch'
+}
 Require-Bridge 'pending_kind\(phase, &kind\)[\s\S]{0,260}fail-closed reset pointer' 'Physical Cancel must fail closed instead of being guessed as AX kind 3'
 Require-Bridge 'PendingTouchAction pending\{[\s\S]{0,180}pointerID[\s\S]{0,180}kind[\s\S]{0,180}expirationTime[\s\S]{0,180}generation' 'HID callback does not create a structured pending action'
-Require-Bridge 'timestamp=CFAbsoluteTimeGetCurrent\(\)[\s\S]{0,1200}timestamp \+ wzhud_pending_touch::kExpirationInterval' 'AX CFAbsoluteTime + 0.75 expiration source changed'
+Require-Bridge 'timestamp=CFAbsoluteTimeGetCurrent\(\)[\s\S]{0,2200}timestamp \+ wzhud_pending_touch::kExpirationInterval' 'AX CFAbsoluteTime + 0.75 expiration source changed'
 Require-Pending 'canExecute\(const PendingTouchAction &action,[\s\S]{0,520}now < action\.expirationTime[\s\S]{0,240}action\.generation == currentGeneration' 'Execution policy does not recheck expiration and generation'
 Require-Bridge 'popNext\(CFAbsoluteTimeGetCurrent\(\), generation,[\s\S]{0,120}&action, &expiredPointerID\)[\s\S]{0,1200}canExecute\(' 'Expiration is not rechecked before main-thread execution'
 Require-Bridge 'expiredLifecycle[\s\S]{0,700}finish_expired_lifecycle_pointer_main\(pending->pointerID\)[\s\S]{0,300}g_pendingTouchActions\.discardAll\(\)' 'Expired AX lifecycle does not clear the queued batch and retained HUD pointer'
 Require-Bridge 'invalidate_pending_touch_actions_main\(void\)[\s\S]{0,180}g_pendingTouchGeneration\.fetch_add\(1\)[\s\S]{0,500}g_pendingTouchActions\.reset\(generation\)' 'Pending queue invalidation does not advance generation and clear state'
-Require-Bridge 'handle_scene_activity_main\(BOOL active\)[\s\S]{0,180}if \(!active\) invalidate_pending_touch_actions_main\(\)' 'Scene inactivity does not invalidate pending touch work'
-Require-Bridge 'destroy_hud_main\(void\)[\s\S]{0,180}invalidate_pending_touch_actions_main\(\)' 'HUD teardown does not invalidate pending touch work'
+Require-Bridge 'handle_scene_activity_main\(BOOL active\)[\s\S]{0,500}invalidate_pending_touch_actions_main\(\)' 'Scene inactivity does not invalidate pending touch work'
+Require-Bridge 'destroy_hud_main\(void\)[\s\S]{0,500}invalidate_pending_touch_actions_main\(\)' 'HUD teardown does not invalidate pending touch work'
 Require-Bridge 'g_localHostingReady\.store\(ready\)[\s\S]{0,220}if \(ready\) \{[\s\S]{0,120}invalidate_pending_touch_actions_main\(\)' 'Local hosting replacement does not invalidate pending touch work'
 Require-Bridge 'g_springBoardHostingInFlight\.store\(false\)[\s\S]{0,180}if \(success\) \{[\s\S]{0,120}invalidate_pending_touch_actions\(\)' 'SpringBoard hosting replacement does not invalidate pending touch work'
 Require-Bridge 'static BOOL unregister_local_hosting_main\(void\) \{[\s\S]{0,360}invalidate_pending_touch_actions_main\(\)' 'Local hosting teardown does not invalidate pending touch work'

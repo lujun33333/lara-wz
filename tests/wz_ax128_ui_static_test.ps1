@@ -47,7 +47,9 @@ foreach ($title in @('调试窗口','屏幕捕获','大图头像','小图兵线'
     Require ([regex]::Escape('@"' + $title + '"')) "AX control missing: $title"
 }
 Reject '@"大地图射线"|@"小地图血量"|@"小地图回城"' 'Non-Yuanbao independent drawing toggles remain'
-Require 'wzaim_runtime_is_ready\(\)' 'Aim readiness status is not surfaced'
+Require 'wzax_touch_is_ready\(\)' 'External touch sender readiness is not surfaced'
+Require '@"\u6280\u80fd\u69fd\u4f4d",@\[@"1",@"2",@"3",@"4"\]' 'Aim skill slot is not an explicit 1..4 choice'
+Require '@"\u6821\u51c6\u771f\u5b9e\u6280\u80fd\u62d6\u62fd"' 'Real skill-drag calibration control is missing'
 Require '@"\\u81ea\\u7784\\u5f00\\u5173",44000,ax_bool\(@"aim\.enabled"\),YES' 'Aim cannot be armed before first gesture verification'
 Reject 'aim\.button|44003|AIM 悬浮按钮' 'Unconnected AIM floating trigger remains as a fallback UI'
 Require 'defaults\[\] = \{[\s\S]{0,80}16,-57,10,150,MAX\(0\.0f,logicalWidth-150\.0f-10\.0f\)' 'Yuanbao coordinate defaults changed'

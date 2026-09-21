@@ -6,8 +6,16 @@
 #include <cassert>
 #include <vector>
 
+static int aimSnapshotCalls = 0;
+static uint64_t aimSnapshotGeneration = 0;
+static bool aimProjectionSupplied = false;
 extern "C" bool wzaim_runtime_consume_snapshot(
-        const KoiEntity *, size_t, const KoiRuntimeDiagnostics *) {
+        const KoiEntity *, size_t, const KoiRuntimeDiagnostics *diagnostics,
+        const KoiProjectionState *projection) {
+    ++aimSnapshotCalls;
+    aimSnapshotGeneration = diagnostics != nullptr
+        ? diagnostics->snapshotGeneration : 0;
+    aimProjectionSupplied = projection != nullptr;
     return false;
 }
 
@@ -152,4 +160,19 @@ int main() {
     enemies[0].enemy = enemies[1].enemy = 1;
     config.flags = 0;
     assert(TryAXAutoKill(config, state, enemies, 2) == 0 && taps == 6);
+
+    wzesp_config_t aimConfig{};
+    aimConfig.flags = WZESP_COLLECT_AIM;
+    wzesp_item_t aimItems[1]{};
+    assert(wzesp_tick(0x101000000, 1000, 500,
+                      &aimConfig, aimItems, 1) == 0);
+    assert(aimSnapshotCalls == 1 && aimSnapshotGeneration == 1 &&
+           aimProjectionSupplied);
+    assert(wzesp_tick(0x101000000, 1000, 500,
+                      &aimConfig, aimItems, 1) == 0);
+    assert(aimSnapshotCalls == 2 && aimSnapshotGeneration == 2);
+    wzesp_reset();
+    assert(wzesp_tick(0x101000000, 1000, 500,
+                      &aimConfig, aimItems, 1) == 0);
+    assert(aimSnapshotCalls == 3 && aimSnapshotGeneration == 1);
 }

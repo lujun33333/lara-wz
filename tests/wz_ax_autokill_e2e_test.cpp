@@ -10,7 +10,8 @@
 #include <map>
 
 extern "C" bool wzaim_runtime_consume_snapshot(
-        const KoiEntity *, size_t, const KoiRuntimeDiagnostics *) {
+        const KoiEntity *, size_t, const KoiRuntimeDiagnostics *,
+        const KoiProjectionState *) {
     return false;
 }
 
