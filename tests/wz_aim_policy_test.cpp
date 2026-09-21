@@ -1,4 +1,5 @@
 #include "../lara/kexploit/wz/WZAimPolicy.h"
+#include "../lara/kexploit/wz/WZAimObserverPolicy.h"
 
 #include <array>
 #include <cassert>
@@ -51,13 +52,53 @@ int main() {
     assert(ValidSkillParameters(parameters));
     assert(!ValidSkillParameters({0,5,0,0}));
 
-    LifecycleGate gate{101,101,7,7,0x100100000,true,true,true};
+    LifecycleGate gate{101,101,7,7,0x100100000,true,true,true,true};
     assert(LifecycleReady(gate));
     gate.connectedPid = 102; assert(!LifecycleReady(gate));
     gate.connectedPid = 101; gate.connectedGeneration = 8;
     assert(!LifecycleReady(gate));
     gate.connectedGeneration = 7; gate.transportWritable = false;
     assert(!LifecycleReady(gate));
+    gate.transportWritable = true; gate.profileVerified = false;
+    assert(TransportSessionReady(gate));
+    assert(!LifecycleReady(gate));
+
+    WZAimObserverPolicy::Layout layout{};
+    layout.managerDown = 0x80;
+    layout.managerDragging = 0x81;
+    layout.managerUsingSlot = 0x90;
+    layout.managerCurrentSlot = 0x98;
+    layout.slotType = 0x30;
+    layout.slotIndicator = 0x140;
+    layout.indicatorSlot = 0x48;
+    layout.indicatorPosition = 0xBC;
+    layout.indicatorDirection = 0xDC;
+    layout.indicatorOrigin = 0xE8;
+    layout.managerSize = 0x300;
+    layout.slotSize = 0x200;
+    layout.indicatorSize = 0x300;
+    assert(WZAimObserverPolicy::ExactLayout(layout));
+    layout.indicatorDirection = 0xD8;
+    assert(!WZAimObserverPolicy::ExactLayout(layout));
+    assert(WZAimObserverPolicy::MetadataRetryDelaySeconds(0) == 0.0);
+    assert(WZAimObserverPolicy::MetadataRetryDelaySeconds(1) == 0.25);
+    assert(WZAimObserverPolicy::MetadataRetryDelaySeconds(6) == 8.0);
+    assert(WZAimObserverPolicy::MetadataRetryDelaySeconds(8) == 8.0);
+
+    WZAimObserverPolicy::Observation observation{
+        0x100300000,0x100400000,0x100400000,
+        0x100500000,0x100600000,0x100600000,
+        0x100700000,0x100800000,0x100800000,
+        0x100500000,2,2,true,false};
+    assert(WZAimObserverPolicy::ExactObservation(observation));
+    observation.indicatorSlot = 0x100500008;
+    assert(!WZAimObserverPolicy::ExactObservation(observation));
+    observation.indicatorSlot = observation.slot;
+    observation.slotObservedClass = 0x100600008;
+    assert(!WZAimObserverPolicy::ExactObservation(observation));
+    observation.slotObservedClass = observation.slotClass;
+    observation.down = false;
+    assert(!WZAimObserverPolicy::ExactObservation(observation));
 
     const uintptr_t indicator = 0x100200000;
     assert(ExactIndicatorField(indicator, indicator + 0xBC, 0xBC,
@@ -101,6 +142,6 @@ int main() {
     assert(memoryPosition.x == 1 && memoryPosition.y == 2 &&
            memoryDirection.y == 1);
 
-    std::puts("WZ aim policy: selection, prediction, filters, lifecycle and pair-write rollback passed");
+    std::puts("WZ aim policy: selection, prediction, observer proof, lifecycle and pair-write rollback passed");
     return 0;
 }

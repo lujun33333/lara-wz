@@ -699,8 +699,9 @@ final class laramgr: ObservableObject {
             let transportReady = connected && wz_transport_ready()
             let capabilities = transportReady ? wz_transport_capabilities() : 0
             let backendCanWrite = transportReady && wz_transport_can_write()
-            // The AX-aligned profile remains read-only for this game build.
-            // 未经该版本验证的王者写偏移不得因 mapped-pages 可写而解锁。
+            // General AX features remain read-only. Aim receives only the
+            // backend capability; its separate UUID/reflection/object proof
+            // must authorize the two exact indicator fields at runtime.
             let canWrite = false
             let transportName = transportReady ? String(cString: wz_transport_name()) : "none"
             let imageValid = transportReady && base != 0 && self.wzCheckImage(base)
@@ -718,9 +719,18 @@ final class laramgr: ObservableObject {
                     wz_session_generation(),
                     base,
                     imageValid,
-                    canWrite
+                    backendCanWrite
                 )
+                let aimObserverStarted = wzaim_observer_start(
+                    pid,
+                    wz_session_generation(),
+                    base,
+                    imageValid,
+                    backendCanWrite
+                )
+                self.logmsg("(wz.aim) observer=\(aimObserverStarted ? \"started\" : \"closed\") profileWrite=observer-gated")
             } else {
+                wzaim_observer_stop()
                 wzaim_runtime_detach()
                 wz_disconnect()
             }
@@ -736,7 +746,7 @@ final class laramgr: ObservableObject {
                     transportName.withCString {
                         wzhud_set_transport_state(true, self.wzCanWrite, $0)
                     }
-                    self.logmsg("(wz) connected pid=\(pid) UnityFramework=0x\(String(base, radix: 16)) transport=\(transportName) backendWrite=\(backendCanWrite ? "yes" : "no") profileWrite=disabled")
+                    self.logmsg("(wz) connected pid=\(pid) UnityFramework=0x\(String(base, radix: 16)) transport=\(transportName) backendWrite=\(backendCanWrite ? "yes" : "no") generalWrite=disabled aimWrite=observer-gated")
                     self.wzGameHUDEnabled = true
                     self.wzGameHUDSessionArmed = true
                     UserDefaults.standard.set(false, forKey: "wzGameHUDEnabled")
@@ -783,6 +793,7 @@ final class laramgr: ObservableObject {
             // Invalidate, drain both independent readers, then clear caches
             // and release the transport (AX 0x1008071d0/0x100807374 order).
             self.stopWZReadersOnWorker()
+            wzaim_observer_stop()
             wzaim_runtime_detach()
             wzesp_reset()
             wz_disconnect()
@@ -936,6 +947,7 @@ final class laramgr: ObservableObject {
         wzLastConfigFingerprint = fingerprint
         wzLastHUDControlFlags = config.flags
         scheduleWZReaders(base: request.1, flags: config.flags)
+        _ = wzaim_observer_poll()
 
         wzTickNumber &+= 1
         wzFPSFrameCount += 1
@@ -972,6 +984,7 @@ final class laramgr: ObservableObject {
                 wzTimer?.cancel()
                 wzTimer = nil
                 stopWZReadersOnWorker()
+                wzaim_observer_stop()
                 wzaim_runtime_detach()
                 wzesp_reset()
                 wz_disconnect()
@@ -1311,6 +1324,7 @@ final class laramgr: ObservableObject {
                 return
             }
             self.stopWZReadersOnWorker()
+            wzaim_observer_stop()
             wzaim_runtime_detach()
             wzesp_reset()
             wz_disconnect()

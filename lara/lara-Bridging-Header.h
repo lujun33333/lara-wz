@@ -12,6 +12,7 @@
 #import "wzmem.h"
 #import "wzesp.h"
 #import "wz/WZAimRuntime.h"
+#import "wz/WZAimObserver.h"
 #import "WZHUDBridge.h"
 #import "headers/AXLauncherAuthorizationPolicy.h"
 #import "vnode.h"

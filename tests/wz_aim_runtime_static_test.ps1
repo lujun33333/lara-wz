@@ -3,6 +3,9 @@ $root = Split-Path -Parent $PSScriptRoot
 $runtime = Get-Content -Raw (Join-Path $root 'lara/kexploit/wz/WZAimRuntime.mm')
 $header = Get-Content -Raw (Join-Path $root 'lara/kexploit/wz/WZAimRuntime.h')
 $policy = Get-Content -Raw (Join-Path $root 'lara/kexploit/wz/WZAimPolicy.h')
+$observer = Get-Content -Raw (Join-Path $root 'lara/kexploit/wz/WZAimObserver.mm')
+$observerHeader = Get-Content -Raw (Join-Path $root 'lara/kexploit/wz/WZAimObserver.h')
+$observerPolicy = Get-Content -Raw (Join-Path $root 'lara/kexploit/wz/WZAimObserverPolicy.h')
 $collector = Get-Content -Raw (Join-Path $root 'lara/kexploit/wz/YuanbaoCollector.mm')
 $consumer = Get-Content -Raw (Join-Path $root 'lara/kexploit/wzesp.mm')
 $swift = Get-Content -Raw (Join-Path $root 'lara/classes/laramgr.swift')
@@ -19,6 +22,8 @@ Need $runtime 'WZAimRuntimeConfig gConfig\{0, 0, 1, 0, 0, 2, 0, 0\}' 'aim must d
 Need $runtime 'wz_connected_pid\(\)' 'live pid gate missing'
 Need $runtime 'wz_session_generation\(\)' 'live generation gate missing'
 Need $runtime 'wz_transport_can_write\(\)' 'write-capability gate missing'
+Need $policy 'profileVerified' 'observer-specific profile gate missing'
+Need $policy 'TransportSessionReady' 'pre-observer transport/session gate missing'
 Need $runtime 'ExactIndicatorField' 'indicator field whitelist missing'
 Need $runtime 'gIndicator \+ 0x48' 'verified indicator-to-skill-slot chain missing'
 Need $runtime 'skillSlotObject \+ 0x30' 'active skill slot read missing'
@@ -29,11 +34,40 @@ Need $runtime 'gConfig\.officialParameters != 0[\s\S]{0,220}WZAimRuntimeStatusOr
 Need $consumer 'WZESP_COLLECT_AIM[\s\S]{0,1600}KoiFeatureAvatar[\s\S]{0,700}KoiFeatureHero' 'shared aim collection mask missing'
 Need $runtime 'FindBuiltIn' 'Lulu per-hero skill table missing'
 Need $collector '0x123FBC88, 0x138, 0x2C8, 0x48, 0x170, 0x150' 'verified host chain missing'
-Need $header 'wzaim_runtime_bind_indicator' 'indicator observer API missing'
+Need $header 'wzaim_runtime_bind_verified_indicator' 'verified indicator observer API missing'
+if ($header -match 'wzaim_runtime_bind_indicator\(') {
+    throw 'FAIL: unverified raw indicator binder remains exposed'
+}
 Need $header 'wzaim_runtime_set_gesture_active' 'gesture lifecycle API missing'
+Need $observerPolicy '0x0F1B25D0' 'LC_UUID-matched IL2CPP export profile missing'
+Need $observerPolicy 'indicatorSlot != 0x48' 'reflected indicator layout gate missing'
+Need $observerPolicy 'indicatorPosition != WZAimPolicy::kIndicatorPositionOffset' 'position field gate missing'
+Need $observer 'VerifyRemoteUUID' 'observer does not independently verify remote UUID'
+Need $observer 'Scripts.GameCore.dll' 'observer does not resolve the exact managed assembly'
+Need $observer 'CSkillButtonManager' 'real skill-button manager observer missing'
+Need $observer 'name != "_instance"' 'singleton observer does not require the exact _instance field'
+Need $observer 'm_skillButtonDown' 'real button-down source missing'
+Need $observer 'm_skillButtonDraging' 'real drag source missing'
+Need $observer 'm_usingSlot' 'active SkillSlotLinker source missing'
+Need $observer 'skillIndicator' 'slot-to-indicator source missing'
+Need $observer 'ExactObservation' 'object/class/link proof missing'
+Need $observerPolicy 'kMaxMetadataResolveAttempts = 8' 'metadata retry is not bounded'
+Need $observerPolicy 'MetadataRetryDelaySeconds' 'metadata retry backoff policy missing'
+Need $observer 'metadataResolveAttempts <[\s\S]{0,120}kMaxMetadataResolveAttempts' 'poll does not retry metadata with a bound'
+Need $observer 'now >= gObserver\.nextMetadataResolve' 'metadata retry has no backoff gate'
+Need $observer 'DestroyRemoteLocked\(\);\s*PublishLocked\(WZAimObserverStatusMetadataUnavailable\)' 'failure snapshot is published before cleanup clears state'
+Need $observer 'wzaim_runtime_bind_verified_indicator' 'verified observer is not connected to runtime'
+Need $observer 'wzaim_runtime_set_gesture_active\(true\)' 'gesture activation is not connected'
+if ($observer -match '\bwz_write\s*\(') {
+    throw 'FAIL: observer writes game fields outside WZAimRuntime whitelist'
+}
+Need $observerHeader 'wzaim_observer_poll' 'observer poll API missing'
 Need $bridge 'wz/WZAimRuntime.h' 'Swift bridge import missing'
+Need $bridge 'wz/WZAimObserver.h' 'observer Swift bridge import missing'
 Need $swift 'wzaim_runtime_attach\(' 'attach lifecycle missing'
-Need $swift 'wzaim_runtime_attach\([\s\S]*?imageValid,\s*canWrite\s*\)' 'aim attach must honor the version-profile write gate'
+Need $swift 'wzaim_runtime_attach\([\s\S]*?imageValid,\s*backendCanWrite\s*\)' 'aim runtime must receive backend capability behind its observer gate'
+Need $swift 'wzaim_observer_start\([\s\S]*?imageValid,\s*backendCanWrite\s*\)' 'verified external observer lifecycle missing'
+Need $swift 'wzaim_observer_poll\(\)' 'verified observer is not polled by the WZ worker'
 Need $hud 'WZESP_COLLECT_AIM' 'aim UI does not request the shared collector snapshot'
 Need $consumer 'wzaim_runtime_consume_snapshot' 'shared collector does not feed the aim consumer'
 Need $swift 'WZESP_AUTO_KILL \| WZESP_COLLECT_AIM[\s\S]{0,120}WZESP_READER_HOST_POSITION' 'shared aim snapshot does not schedule the verified host reader'
@@ -41,7 +75,7 @@ if ($runtime -match 'YuanbaoCollectorGather|YuanbaoCollectorReadAimHostPosition|
     $swift -match 'wzaim_runtime_tick\(') {
     throw 'FAIL: aim still owns a second gather/host/projection path'
 }
-Need $swift 'stopWZReadersOnWorker\(\)\s*wzaim_runtime_detach\(\)\s*wzesp_reset\(\)\s*wz_disconnect\(\)' 'detach must restore/stop before transport disconnect'
+Need $swift 'stopWZReadersOnWorker\(\)\s*wzaim_observer_stop\(\)\s*wzaim_runtime_detach\(\)\s*wzesp_reset\(\)\s*wz_disconnect\(\)' 'detach must stop observer and restore before transport disconnect'
 Need $hud 'wzaim_runtime_is_ready\(\)' 'UI readiness gate missing'
 Need $hud 'wzaim_runtime_apply_config\(&aim\)' 'UI config is not connected to runtime'
 Need $hud 'wzaim_runtime_set_skill_config' 'per-hero skill settings are not connected'
@@ -51,13 +85,20 @@ Need $hud '44200' 'three draw-target controls missing'
 Need $hud 'wzaim_runtime_copy_target\(&aimTarget\)' 'target draw mode is not connected to the shared renderer'
 Need $hud 'tag >= 21000 && tag < 21002' 'aim parameter sliders are not connected to HID pointer routing'
 Need $hud 'aim\.official' 'original-release control missing'
+Need $hud 'if \(enabled\) ax_store_setting\(@"aim\.official",@NO\)' 'enabling aim does not leave original-release bypass active'
+Need $hud 'if \(official\) ax_store_setting\(@"aim\.enabled",@NO\)' 'original-release mode does not disable aim writes'
 if ($hud -match 'aim\.button|44003|AIM 悬浮按钮') {
     throw 'FAIL: unsupported AIM button remains as a disabled fallback UI'
 }
-Need $hud 'if \(!wzaim_runtime_is_ready\(\)\) ax_store_setting.*aim\.enabled.*NO' 'not-ready UI must force persisted aim off'
+Need $hud 'aim\.enabled=requested' 'armed aim request is not forwarded to the gated runtime'
+Need $hud 'if \(ax_bool\(@"aim\.enabled"\) && !ax_bool\(@"aim\.official"\)\)[\s\S]{0,80}WZESP_COLLECT_AIM' 'armed aim does not request the shared snapshot before observer proof'
+Need $hud '@"\\u81ea\\u7784\\u5f00\\u5173",44000,ax_bool\(@"aim\.enabled"\),YES' 'aim switch is still disabled before the first verified gesture'
+if ($hud -match 'if \(!ready && requested\)[\s\S]{0,280}aim\.enabled.*NO') {
+    throw 'FAIL: observer warm-up still clears the persisted aim request'
+}
 Need $project 'PBXFileSystemSynchronizedRootGroup[\s\S]*?path = lara;' 'lara synchronized source membership missing'
-if ($project -match 'membershipExceptions = \([\s\S]*?WZAimRuntime\.mm') {
-    throw 'FAIL: WZAimRuntime.mm is excluded from the synchronized target'
+if ($project -match 'membershipExceptions = \([\s\S]*?WZAim(Runtime|Observer)\.mm') {
+    throw 'FAIL: WZAim runtime/observer is excluded from the synchronized target'
 }
 Need $build 'xcodebuild' 'package script does not compile the synchronized Xcode target'
 

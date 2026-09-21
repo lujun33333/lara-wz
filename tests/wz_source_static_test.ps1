@@ -132,7 +132,7 @@ Require-Text 'lara/kexploit/WZHUDBridge.mm' 'item\.primitive == WZESP_PRIMITIVE_
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'item\.recallActive[\s\S]{0,900}1\.0995573997497559f' '回城动态绘制断开'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'item\.auxiliaryCooldownSeconds' '辅助技能冷却未进入绘制层'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'heroimg/%d/%d\.jpg' 'AX 英雄头像加载链未接入'
-Require-Text 'lara/kexploit/WZHUDBridge.mm' 'summoner/%d\.jpg' 'AX 召唤师图标加载链未接入'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'summonero/%d\.png' '元宝召唤师图标加载链未接入'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' '@"大图头像"' '元宝大图头像功能缺失'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' '@"野怪刷新"' '元宝野怪刷新功能缺失'
 Require-Text 'lara/kexploit/WZHUDBridge.mm' '@"英雄技能"' '元宝英雄技能功能缺失'
@@ -169,7 +169,7 @@ Require-Text 'lara/views/app/ContentView.swift' 'mgr\.launchWZGame\(\)' '启动�
 Reject-Text 'lara/views/app/ContentView.swift' 'WZControlPanelView\(' '应用仍叠加 SwiftUI 控制台副本'
 
 Require-Text 'lara/kexploit/WZHUDBridge.mm' 'game\.gtimg\.cn/images/yxzj/img201606/heroimg/%d/%d\.jpg' 'AX 英雄头像地址未接入'
-Require-Text 'lara/kexploit/WZHUDBridge.mm' 'game\.gtimg\.cn/images/yxzj/img201606/summoner/%d\.jpg' 'AX 召唤师技能头像地址未接入'
+Require-Text 'lara/kexploit/WZHUDBridge.mm' 'game\.gtimg\.cn/images/yxzj/img201606/summonero/%d\.png' '元宝召唤师技能头像地址未接入'
 if (Test-Path -LiteralPath (Join-Path $root 'lara/heroatlas.bin')) {
     throw 'FAIL: 已删除的旧英雄图集仍在产品资源中'
 }
