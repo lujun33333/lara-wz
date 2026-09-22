@@ -4,6 +4,8 @@ $source = Get-Content -LiteralPath (Join-Path $root 'lara/kexploit/wz/WZAXTouch.
 $header = Get-Content -LiteralPath (Join-Path $root 'lara/kexploit/wz/WZAXTouch.h') -Raw -Encoding UTF8
 $bridge = Get-Content -LiteralPath (Join-Path $root 'lara/kexploit/WZHUDBridge.mm') -Raw -Encoding UTF8
 $pending = Get-Content -LiteralPath (Join-Path $root 'lara/kexploit/wz/WZHUDPendingTouchQueue.h') -Raw -Encoding UTF8
+$entitlements = Get-Content -LiteralPath (Join-Path $root 'Config/lara.entitlements') -Raw -Encoding UTF8
+$buildScript = Get-Content -LiteralPath (Join-Path $root 'scripts/build_ipa_wz.sh') -Raw -Encoding UTF8
 function Require([string]$pattern, [string]$message) {
     if ($source -notmatch $pattern) { throw "FAIL: $message" }
 }
@@ -16,9 +18,28 @@ function Require-Bridge([string]$pattern, [string]$message) {
 function Require-Pending([string]$pattern, [string]$message) {
     if ($pending -notmatch $pattern) { throw "FAIL: $message" }
 }
+function Require-Entitlement([string]$pattern, [string]$message) {
+    if ($entitlements -notmatch $pattern) { throw "FAIL: $message" }
+}
+function Require-Build([string]$pattern, [string]$message) {
+    if ($buildScript -notmatch $pattern) { throw "FAIL: $message" }
+}
 # Binary-derived ABI contract: AX128 0x100833308..0x10083331c sets x0..x4.
 Require 'Ref \(\*createVirtual\)\(Ref, CFDictionaryRef, const VirtualCallbacksV2 \*, void \*, void \*\)' 'VirtualService create ABI must have five arguments'
 Require 'serviceProperties\(\), &callbacks, token, token\)' 'VirtualService properties/generation arguments missing'
+Require 'SecTaskCopyValueForEntitlement' 'Runtime effective-entitlement probe is missing'
+Require 'CFSTR\("platform-application"\)' 'Platform entitlement is not checked at runtime'
+Require 'CFSTR\("com\.apple\.private\.hid\.client\.event-dispatch"\)' 'HID dispatch entitlement is not checked at runtime'
+Require 'CFSTR\("com\.apple\.private\.hid\.client\.service-protected"\)' 'Protected HID service entitlement is not checked at runtime'
+Require 'CFSTR\("com\.apple\.private\.hid\.manager\.client"\)' 'HID manager entitlement is not checked at runtime'
+Require 'create-service probe mode=local[\s\S]{0,500}callbacks=v%llu/%zu[\s\S]{0,300}order=set-queue>activate>create-virtual' 'CreateVirtual ABI/order diagnostic is missing'
+Require-Entitlement '<key>platform-application</key>\s*<true/>' 'Requested platform entitlement is missing'
+Require-Entitlement '<key>com\.apple\.private\.hid\.client\.event-dispatch</key>\s*<true/>' 'Requested HID dispatch entitlement is missing'
+Require-Entitlement '<key>com\.apple\.private\.hid\.client\.service-protected</key>\s*<true/>' 'Requested protected HID service entitlement is missing'
+Require-Entitlement '<key>com\.apple\.private\.hid\.manager\.client</key>\s*<true/>' 'Requested HID manager entitlement is missing'
+Require-Build 'codesign -d --entitlements :- "\$BIN" >"\$SIGNED_ENTITLEMENTS"' 'Build does not read back final executable entitlements'
+Require-Build 'missing signed entitlement keys' 'Build does not reject missing signed entitlement keys'
+Require-Build 'mismatched signed entitlement values' 'Build does not reject changed signed entitlement values'
 Require 'token != generation \|\| service != virtualService' 'Late service notification may activate a replacement host'
 Require 'CFNumberGetValue\(\(CFNumberRef\)value, kCFNumberSInt64Type, &result\)' 'Registry ID must be converted from CFNumber'
 # AX Pro v1.2.8 dispatches in-process regardless of HUD layer hosting.
@@ -66,7 +87,8 @@ Require 'bool convertToFixedPoint[\s\S]{0,700}if \(NSThread\.isMainThread\) conv
 $fixedConversions = [regex]::Matches($source, 'convertToFixedPoint\(x, y, fixedSpace, &fixed\)').Count
 if ($fixedConversions -ne 4) { throw "FAIL: tap/begin/move/end must share fixed-space conversion, got $fixedConversions call sites" }
 Require 'start failed stage=create-client mode=local' 'Touch start does not report client creation stage'
-Require 'start failed stage=create-service mode=local' 'Touch start does not report virtual-service creation stage'
+Require 'start failed stage=create-service mode=local[\s\S]{0,120}effective-entitlements=%s' 'Touch start does not classify virtual-service entitlement evidence'
+Require 'if \(!virtualService\) \{[\s\S]{0,320}start failed stage=create-service mode=local[\s\S]{0,180}clear\(\);[\s\S]{0,80}return;' 'CreateVirtual failure must remain fail-closed'
 Require-Pending 'struct PendingTouchAction[\s\S]{0,280}pointerID[\s\S]{0,160}kind[\s\S]{0,160}expirationTime[\s\S]{0,220}actionBlock' 'Pending touch action does not preserve AX fields'
 Require-Pending 'AtomicGesture = 3' 'AX kind 3 must remain the point-only/timed gesture kind, not physical Cancel'
 Require-Pending 'kExpirationInterval = 0\.75' 'AX 0x10087b06c expiration interval changed'
