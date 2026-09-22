@@ -699,9 +699,10 @@ final class laramgr: ObservableObject {
             let transportReady = connected && wz_transport_ready()
             let capabilities = transportReady ? wz_transport_capabilities() : 0
             let backendCanWrite = transportReady && wz_transport_can_write()
-            // General AX features remain read-only. Aim receives only the
-            // backend capability; its separate UUID/reflection/object proof
-            // must authorize the two exact indicator fields at runtime.
+            // General AX features and this observer validation slice remain
+            // read-only. The legacy runtime still receives the backend
+            // capability for ABI stability, but externalTouch keeps its
+            // internal writer disabled.
             let canWrite = false
             let transportName = transportReady ? String(cString: wz_transport_name()) : "none"
             let imageValid = transportReady && base != 0 && self.wzCheckImage(base)
@@ -729,7 +730,7 @@ final class laramgr: ObservableObject {
                     backendCanWrite
                 )
                 let aimObserverState = aimObserverStarted ? "started" : "closed"
-                self.logmsg("(wz.aim) observer=\(aimObserverState) profileWrite=observer-gated")
+                self.logmsg("(wz.aim) observer=\(aimObserverState) mode=read-only-validation")
             } else {
                 wzaim_observer_stop()
                 wzaim_runtime_detach()
@@ -747,7 +748,7 @@ final class laramgr: ObservableObject {
                     transportName.withCString {
                         wzhud_set_transport_state(true, self.wzCanWrite, $0)
                     }
-                    self.logmsg("(wz) connected pid=\(pid) UnityFramework=0x\(String(base, radix: 16)) transport=\(transportName) backendWrite=\(backendCanWrite ? "yes" : "no") generalWrite=disabled aimWrite=observer-gated")
+                    self.logmsg("(wz) connected pid=\(pid) UnityFramework=0x\(String(base, radix: 16)) transport=\(transportName) backendWrite=\(backendCanWrite ? "yes" : "no") generalWrite=disabled aimWrite=disabled")
                     self.wzGameHUDEnabled = true
                     self.wzGameHUDSessionArmed = true
                     UserDefaults.standard.set(false, forKey: "wzGameHUDEnabled")
@@ -947,6 +948,9 @@ final class laramgr: ObservableObject {
         let configChanged = fingerprint != wzLastConfigFingerprint
         wzLastConfigFingerprint = fingerprint
         wzLastHUDControlFlags = config.flags
+        if config.flags & UInt32(WZESP_COLLECT_AIM) == 0 {
+            wzaim_host_actor_reset()
+        }
         scheduleWZReaders(base: request.1, flags: config.flags)
         _ = wzaim_observer_poll()
 

@@ -6,6 +6,9 @@ $policy = Get-Content -Raw (Join-Path $root 'lara/kexploit/wz/WZAimPolicy.h')
 $observer = Get-Content -Raw (Join-Path $root 'lara/kexploit/wz/WZAimObserver.mm')
 $observerHeader = Get-Content -Raw (Join-Path $root 'lara/kexploit/wz/WZAimObserver.h')
 $observerPolicy = Get-Content -Raw (Join-Path $root 'lara/kexploit/wz/WZAimObserverPolicy.h')
+$hostActor = Get-Content -Raw (Join-Path $root 'lara/kexploit/wz/WZAimHostActor.mm')
+$hostActorHeader = Get-Content -Raw (Join-Path $root 'lara/kexploit/wz/WZAimHostActor.h')
+$hostActorPolicy = Get-Content -Raw (Join-Path $root 'lara/kexploit/wz/WZAimHostActorPolicy.h')
 $collector = Get-Content -Raw (Join-Path $root 'lara/kexploit/wz/YuanbaoCollector.mm')
 $consumer = Get-Content -Raw (Join-Path $root 'lara/kexploit/wzesp.mm')
 $swift = Get-Content -Raw (Join-Path $root 'lara/classes/laramgr.swift')
@@ -94,18 +97,38 @@ Need $observerPolicy 'completedAttempts == 1 \? 0\.25 : 0\.5' 'active object-cha
 Need $observer 'metadataResolveAttempts <[\s\S]{0,120}kMetadataRetryAttemptSaturation' 'metadata retry counter does not saturate'
 Need $observer 'now >= gObserver\.nextMetadataResolve' 'metadata retry has no backoff gate'
 Reject $observer 'RemoteCall|doRemoteCall|remote_write|remote_alloc_str|thread_attach|thread_detach|\bmalloc\b|\bfree\b' 'observer still executes or prepares target-process calls'
-Need $observer 'wzaim_runtime_bind_verified_indicator' 'verified observer is not connected to runtime'
-Need $observer 'wzaim_runtime_set_gesture_active\(true\)' 'gesture activation is not connected'
-if ($observer -match '\bwz_write\s*\(') {
-    throw 'FAIL: observer writes game fields outside WZAimRuntime whitelist'
-}
+Reject $observer 'wzaim_runtime_|\bwz_write\s*\(' 'read-only observer still binds or writes through WZAimRuntime'
+Need $observer 'indicator bound slot=%d relation=exact[\s\S]{0,80}read-only=1' 'read-only indicator binding diagnostic missing'
+Need $observer 'gesture active=1 slot=%d down=%u drag=%u[\s\S]{0,80}read-only=1' 'real gesture diagnostic missing'
+Need $observer 'layout verified bindings=%zu exact=1' 'reflected layout diagnostic missing'
+Reject $observer '0x%llx|address=' 'observer diagnostics expose reusable target addresses'
 Need $observerHeader 'wzaim_observer_poll' 'observer poll API missing'
+Need $hostActorHeader 'wzaim_host_actor_poll' 'independent aim-only host reader API missing'
+Need $hostActor 'kActorRootRVA = 0x1325A6C0' 'aim-only reader does not use the verified actor root'
+Need $hostActor 'wz_read_fresh_root\(rootSlot' 'aim-only reader can retain a stale mapped-page actor root'
+Need $hostActor 'kFreshRootIntervalNanoseconds = UINT64_C\(350000000\)' 'aim-only fresh-root recovery is not rate limited'
+Need $hostActor '0x123FBC88, 0x138, 0x2C8, 0x48, 0x170, 0x150' 'aim-only reader does not use the verified host-position chain'
+Need $hostActor 'count < static_cast<int32_t>\(kMinimumHeroCount\)[\s\S]{0,120}count > static_cast<int32_t>\(kMaximumHeroCount\)' 'aim-only hero-table bounds missing'
+Need $hostActor 'selection\.Unique\(\)' 'aim-only reader does not fail closed on ambiguous host matches'
+Need $hostActorPolicy 'kStableSampleCount = 2' 'two-frame host stability gate missing'
+Need $hostActorPolicy 'state->generation == generation[\s\S]{0,160}state->actorRoot == actorRoot[\s\S]{0,160}state->actor == actor' 'host stability does not bind session/root/actor'
+Need $hostActor 'wzaim_observer_set_host_actor' 'stable aim-only host is not supplied to observer'
+Reject $collector 'wzaim_observer_set_host_actor|WZAimHostActor' 'minimap collector is coupled back to aim host discovery'
+Reject $hostActor '\bwz_write\s*\(|wzaim_runtime_' 'aim-only host reader can write or arm runtime writer'
+Reject $hostActor '0x%llx|address=' 'host reader diagnostics expose reusable target addresses'
+Need $consumer 'wzaim_host_actor_poll[\s\S]{0,100}wz_session_generation\(\)' 'shared frame does not poll the independent host reader with live session identity'
+Need $consumer 'wzaim_host_actor_reset\(\)' 'host reader is not reset by aim/collector lifecycle'
 Need $bridge 'wz/WZAimRuntime.h' 'Swift bridge import missing'
 Need $bridge 'wz/WZAimObserver.h' 'observer Swift bridge import missing'
+Need $bridge 'wz/WZAimHostActor.h' 'aim-only host reader Swift bridge import missing'
 Need $swift 'wzaim_runtime_attach\(' 'attach lifecycle missing'
 Need $swift 'wzaim_runtime_attach\([\s\S]*?imageValid,\s*backendCanWrite\s*\)' 'aim runtime must receive backend capability behind its observer gate'
 Need $swift 'wzaim_observer_start\([\s\S]*?imageValid,\s*backendCanWrite\s*\)' 'verified external observer lifecycle missing'
 Need $swift 'wzaim_observer_poll\(\)' 'verified observer is not polled by the WZ worker'
+Need $swift 'config\.flags & UInt32\(WZESP_COLLECT_AIM\) == 0[\s\S]{0,100}wzaim_host_actor_reset\(\)' 'aim disable does not immediately revoke the host actor proof'
+Need $swift 'mode=read-only-validation' 'observer lifecycle log does not identify the read-only validation mode'
+Need $swift 'aimWrite=disabled' 'connection log still implies that observer validation can authorize writes'
+Reject $swift 'profileWrite=observer-gated|aimWrite=observer-gated' 'read-only validation is mislabeled as a write gate'
 Need $hud 'WZESP_COLLECT_AIM' 'aim UI does not request the shared collector snapshot'
 Need $consumer 'wzaim_runtime_consume_snapshot' 'shared collector does not feed the aim consumer'
 Need $consumer 'wzaim_runtime_consume_snapshot\([\s\S]{0,160}&projection\)' 'aim consumer does not receive the collector frame projection'
@@ -185,6 +208,9 @@ if ($hud -match 'if \(!ready && requested\)[\s\S]{0,280}aim\.enabled.*NO') {
 Need $project 'PBXFileSystemSynchronizedRootGroup[\s\S]*?path = lara;' 'lara synchronized source membership missing'
 if ($project -match 'membershipExceptions = \([\s\S]*?WZAim(Runtime|Observer)\.mm') {
     throw 'FAIL: WZAim runtime/observer is excluded from the synchronized target'
+}
+if ($project -match 'membershipExceptions = \([\s\S]*?WZAimHostActor\.mm') {
+    throw 'FAIL: WZAimHostActor is excluded from the synchronized target'
 }
 Need $build 'xcodebuild' 'package script does not compile the synchronized Xcode target'
 
