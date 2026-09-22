@@ -77,6 +77,15 @@ Need $observerHeader 'wzaim_observer_copy_host_actor' 'observer does not expose 
 Need $observer 'wzaim_observer_copy_host_actor' 'observer does not implement the shared host-actor proof'
 Need $probe 'wzaim_observer_copy_host_actor' 'probe does not consume the shared host-actor proof'
 
+# Every header reachable from lara-Bridging-Header.h is scanned by the Swift
+# compiler as C, so a C++ standard header there is a hard build failure
+# ('cstdint' file not found) that no text-matching test would otherwise catch.
+# The CI build is the only thing that finds it, so assert it here instead.
+foreach ($h in 'WZAimOffsetProbe.h', 'WZAimObserver.h', 'WZAimRuntime.h') {
+    $text = Get-Content -Raw (Join-Path $root "lara/kexploit/wz/$h")
+    Reject $text '#\s*include\s*<c(?:stdint|stddef|stdbool|stdio|string|math)>' "$h uses a C++ standard header but is reachable from the Swift bridging header"
+}
+
 # Wiring: bridging header, worker loop, lifecycle arm/reset.
 Need $bridge 'wz/WZAimOffsetProbe.h' 'probe is not exposed to Swift'
 Need $swift 'wzOffsetProbeArmed' 'probe is not gated by a Swift-side arm flag'
