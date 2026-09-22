@@ -25,8 +25,11 @@ function Reject([string]$text, [string]$pattern, [string]$message) {
     if ($text -match $pattern) { throw "FAIL: $message" }
 }
 
-Need $runtime 'WZAimRuntimeConfig gConfig\{0, 0, 1, 0, 0, 2, 0, 0\}' 'aim must default disabled with Lulu draw/visibility defaults'
-Need $header 'uint8_t externalTouch;' 'external touch/read-only mode is not explicit in the C ABI'
+$runtimeHeader = $header
+Need $runtime 'WZAimRuntimeConfig gConfig\{0, 0, 1, 0, 0, 0, 0, 2, 0, 0\}' 'aim must default disabled with an unarmed writer and Lulu draw/visibility defaults'
+Need $header 'uint8_t externalTouch;' 'external touch mode is not explicit in the C ABI'
+Need $header 'uint8_t memoryWriterArmed;' 'memory-writer arm is not explicit in the C ABI'
+Need $header 'uint8_t sustainWriter;' 'write-sustain switch is not explicit in the C ABI'
 Need $runtime 'wz_connected_pid\(\)' 'live pid gate missing'
 Need $runtime 'wz_session_generation\(\)' 'live generation gate missing'
 Need $runtime 'wz_transport_can_write\(\)' 'write-capability gate missing'
@@ -42,9 +45,9 @@ Need $runtime 'hostPositionValid=%u friendlyObserverCount=%u[\s\S]{0,120}nearest
 Need $runtime 'gNextHeroIdentityDiagnostic = identityNow \+ 2\.0' 'hero identity diagnostic is not rate limited'
 Need $runtime 'WriteIndicatorPair' 'paired write/readback transaction missing'
 Need $runtime 'RestoreOriginal' 'original-release rollback missing'
-Need $runtime 'config->externalTouch != 0[\s\S]{0,220}RestoreOriginal[\s\S]{0,180}ClearGestureStateLocked' 'external mode does not restore and disarm the old writer'
-Need $runtime 'wzaim_runtime_bind_verified_indicator\([\s\S]{0,220}gConfig\.externalTouch != 0[\s\S]{0,220}return false[\s\S]{0,180}RestoreOriginal' 'external mode is not rejected before observer restoration/write code'
-Need $runtime 'gConfig\.externalTouch != 0[\s\S]{0,120}ClearGestureStateLocked\(\)[\s\S]{0,80}return' 'external mode can still arm indicator gesture writes'
+Need $runtime 'config->memoryWriterArmed == 0[\s\S]{0,220}RestoreOriginal[\s\S]{0,180}ClearGestureStateLocked' 'disarming the writer does not restore and disarm the old writer'
+Need $runtime 'wzaim_runtime_bind_verified_indicator\([\s\S]{0,220}gConfig\.memoryWriterArmed == 0[\s\S]{0,220}return false[\s\S]{0,180}RestoreOriginal' 'a disarmed writer is not rejected before observer restoration/write code'
+Need $runtime 'gConfig\.memoryWriterArmed == 0[\s\S]{0,120}ClearGestureStateLocked\(\)[\s\S]{0,80}return' 'a disarmed writer can still arm indicator gesture writes'
 Need $runtime 'gConfig\.enabled == 0[\s\S]{0,220}WZAimRuntimeStatusDisabled' 'disabling aim can leave a stale target drawing'
 Need $runtime 'gConfig\.officialParameters != 0[\s\S]{0,220}WZAimRuntimeStatusOriginalRelease' 'original-release mode can leave a stale target drawing'
 Need $consumer 'WZESP_COLLECT_AIM[\s\S]{0,1600}KoiFeatureAvatar[\s\S]{0,700}KoiFeatureHero' 'shared aim collection mask missing'
@@ -97,9 +100,11 @@ Need $observerPolicy 'completedAttempts == 1 \? 0\.25 : 0\.5' 'active object-cha
 Need $observer 'metadataResolveAttempts <[\s\S]{0,120}kMetadataRetryAttemptSaturation' 'metadata retry counter does not saturate'
 Need $observer 'now >= gObserver\.nextMetadataResolve' 'metadata retry has no backoff gate'
 Reject $observer 'RemoteCall|doRemoteCall|remote_write|remote_alloc_str|thread_attach|thread_detach|\bmalloc\b|\bfree\b' 'observer still executes or prepares target-process calls'
-Reject $observer 'wzaim_runtime_|\bwz_write\s*\(' 'read-only observer still binds or writes through WZAimRuntime'
-Need $observer 'indicator bound slot=%d relation=exact[\s\S]{0,80}read-only=1' 'read-only indicator binding diagnostic missing'
-Need $observer 'gesture active=1 slot=%d down=%u drag=%u[\s\S]{0,80}read-only=1' 'real gesture diagnostic missing'
+Need $observer 'wzaim_runtime_bind_verified_indicator' 'observer never hands its verified proof to the runtime writer'
+Need $observer 'wzaim_runtime_set_gesture_active\(true\)' 'observer never arms the runtime gesture'
+Reject $observer '\bwz_write\s*\(' 'observer writes to the target itself instead of delegating to the runtime'
+Need $observer 'indicator bound slot=%d relation=exact[\s\S]{0,80}writer=armed' 'indicator binding diagnostic missing'
+Need $observer 'gesture active=1 slot=%d down=%u drag=%u[\s\S]{0,80}writer=armed' 'real gesture diagnostic missing'
 Need $observer 'layout verified bindings=%zu exact=1' 'reflected layout diagnostic missing'
 Reject $observer '0x%llx|address=' 'observer diagnostics expose reusable target addresses'
 Need $observerHeader 'wzaim_observer_poll' 'observer poll API missing'
@@ -126,9 +131,8 @@ Need $swift 'wzaim_runtime_attach\([\s\S]*?imageValid,\s*backendCanWrite\s*\)' '
 Need $swift 'wzaim_observer_start\([\s\S]*?imageValid,\s*backendCanWrite\s*\)' 'verified external observer lifecycle missing'
 Need $swift 'wzaim_observer_poll\(\)' 'verified observer is not polled by the WZ worker'
 Need $swift 'config\.flags & UInt32\(WZESP_COLLECT_AIM\) == 0[\s\S]{0,100}wzaim_host_actor_reset\(\)' 'aim disable does not immediately revoke the host actor proof'
-Need $swift 'mode=read-only-validation' 'observer lifecycle log does not identify the read-only validation mode'
-Need $swift 'aimWrite=disabled' 'connection log still implies that observer validation can authorize writes'
-Reject $swift 'profileWrite=observer-gated|aimWrite=observer-gated' 'read-only validation is mislabeled as a write gate'
+Need $swift 'mode=writer-armed' 'observer lifecycle log does not identify the armed writer mode'
+Need $swift 'aimWrite=armed' 'connection log does not report that the observer-gated writer is armed'
 Need $hud 'WZESP_COLLECT_AIM' 'aim UI does not request the shared collector snapshot'
 Need $consumer 'wzaim_runtime_consume_snapshot' 'shared collector does not feed the aim consumer'
 Need $consumer 'wzaim_runtime_consume_snapshot\([\s\S]{0,160}&projection\)' 'aim consumer does not receive the collector frame projection'
@@ -162,7 +166,7 @@ if ($identityIndex -lt 0 -or $heroPublishIndex -lt 0 -or
     throw 'FAIL: read-only hero/slot/selection order is not explicit'
 }
 Need $consumeBody 'if \(!writeLive\)[\s\S]{0,260}WZAimRuntimeStatusWaitingForIndicator[\s\S]{0,260}&screen' 'read-only target is not published without the indicator write path'
-Need $consumeBody 'writeLive = gConfig\.externalTouch == 0 && gIndicator != 0 &&' 'external mode is not a hard false input to the legacy writer'
+Need $consumeBody 'writeLive = gConfig\.memoryWriterArmed != 0 && gIndicator != 0 &&' 'writeLive is not keyed on the writer arm plus a captured indicator'
 Need $consumeBody 'if \(slot == 0 && writeLive\)' 'external mode still guesses a skill slot without a verified write binding'
 Need $consumeBody 'ProjectAimPoints\([\s\S]{0,100}projectionInput, host, predicted\)' 'predicted target is not projected with the same collector frame'
 Need $runtime 'next\.screenX = screen->targetX' 'snapshot still exposes an unpredicted entity point'
@@ -185,7 +189,8 @@ if ($runtimeWrites -ne 1) {
 }
 Need $consumeBody 'LifecycleReady\(LiveGate\(gSession\)\)[\s\S]{0,2600}WriteIndicatorPair' 'indicator write is no longer behind the strict lifecycle gate'
 Need $swift 'stopWZReadersOnWorker\(\)\s*wzaim_observer_stop\(\)\s*wzaim_runtime_detach\(\)\s*wzesp_reset\(\)\s*wz_disconnect\(\)' 'detach must stop observer and restore before transport disconnect'
-Need $hud 'aim\.externalTouch=1' 'HUD does not hard-select the read-only external delivery mode'
+Need $hud 'aim\.externalTouch=1' 'HUD does not declare the concurrent external delivery mode'
+Need $hud 'aim\.memoryWriterArmed=1' 'HUD does not arm the verified-indicator memory writer'
 Need $hud 'wzax_touch_is_ready\(\)' 'external aim does not gate physical interception on the real sender state'
 Need $hud 'snapshot\.hostScreenValid == 0 \|\| snapshot\.targetScreenValid == 0' 'external aim does not require both projected-point validity flags'
 Need $hud 'wzaim_runtime_apply_config\(&aim\)' 'UI config is not connected to runtime'
@@ -213,6 +218,37 @@ if ($project -match 'membershipExceptions = \([\s\S]*?WZAimHostActor\.mm') {
     throw 'FAIL: WZAimHostActor is excluded from the synchronized target'
 }
 Need $build 'xcodebuild' 'package script does not compile the synchronized Xcode target'
+
+# Regression guard for the externalTouch deadlock.  The HUD arms both external
+# delivery and the memory writer; if any runtime gate keys the write path off
+# externalTouch, writeLive can never become true while the observer still
+# demands a successful bind, and observation revokes itself every poll.
+Need $runtimeHeader 'memoryWriterArmed' 'runtime config has no explicit memory-writer arm'
+Reject $runtime 'if\s*\(\s*gConfig\.externalTouch[^)]*\)\s*\{[^}]*(return|ClearGestureStateLocked)' 'runtime still gates the write path on externalTouch (deadlock regression)'
+Reject $runtime '(writeLive|wzaim_runtime_is_ready)[^;]{0,200}externalTouch' 'writeLive/readiness is still keyed on externalTouch (deadlock regression)'
+Reject $runtimeHeader 'externalTouch[^;]*never arm the legacy verified-indicator writer' 'runtime config still documents externalTouch as a write lock'
+Need $runtime 'memoryWriterArmed != 0 && gIndicator != 0[\s\S]{0,200}LifecycleReady' 'writeLive is not keyed on the writer arm plus a live lifecycle'
+Need $runtime 'wzaim_runtime_is_ready[\s\S]{0,200}memoryWriterArmed' 'runtime readiness is not keyed on the writer arm'
+
+# Regression guard for the external-write starvation defect.  The engine
+# recomputes SkillControlIndicator+0xBC/+0xDC every frame, so a single
+# pair-write is overwritten before the engine acts on it.  The runtime must
+# retain and re-issue the verified write across frames (bounded), and must not
+# tear the binding down on the first rejected write.
+Need $runtimeHeader 'sustainWriter' 'runtime config has no explicit write-sustain switch'
+Need $runtime 'WZAimRuntimeMaxSustainFrames' 'sustain frame budget is not declared'
+Need $runtime 'void ArmSustainLocked\(' 'sustain is never armed'
+Need $runtime 'void RearmSustainLocked\(' 'exhausted sustain cannot be re-armed'
+Need $runtime 'void EndSustainLocked\(' 'sustain is never ended'
+Need $runtime 'bool SustainStillHoldingLocked\(' 'sustain cannot tell whether the engine kept our value'
+Need $runtime 'bool gSustainExhausted = false;' 'sustain exhaustion is not latched (unbounded spin)'
+Need $runtime 'gSustainExhausted = true;' 'sustain exhaustion is never latched'
+Need $runtime 'gConfig\.sustainWriter != 0 && !wrote[\s\S]{0,150}gSustainFramesRemaining == 0' 'sustain does not end on an exhausted budget'
+Need $runtime 'gSustainExhausted \|\| \(!gGestureActive' 'the write path does not honour latched exhaustion'
+Need $runtime '!gGestureActive && gSustainFramesRemaining == 0' 'write path still abandons the aim on a gesture-off frame'
+Need $hud 'aim\.sustainWriter=1' 'HUD does not enable the sustained external writer'
+Reject $runtime 'const bool wrote =\s*\n?\s*transaction\.status == WZAimPolicy::PairWriteStatus::Success;\s*\n\s*if \(!wrote\) \{\s*\n\s*\(void\)RestoreOriginal' 'runtime still restores and gives up on the first rejected write'
+Reject $runtime 'if \(!gGestureActive\) \{\s*\n\s*PublishLocked\(WZAimRuntimeStatusReady' 'runtime still drops the external write whenever the gesture pulse is absent'
 
 $rows = [regex]::Matches($runtime, '\{\d+,\d+,[0-9.]+f,[0-9.]+f\}').Count
 if ($rows -ne 51) { throw "FAIL: expected 51 Lulu hero/slot rows, got $rows" }

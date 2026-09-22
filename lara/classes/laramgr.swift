@@ -291,6 +291,10 @@ final class laramgr: ObservableObject {
     private var wzReaderGeneration: UInt64 = 0
     private var wzAuxiliaryReaderInFlight = false
     private var wzAutoKillReaderInFlight = false
+    // Diagnostic: republish the offsets resolved from live IL2CPP metadata so
+    // they can be diffed against the hardcoded constants on a real device.
+    // Enabled by the "aim.offsetprobe" setting; pure read, never writes.
+    private var wzOffsetProbeArmed = false
     private var wzEpoch: UInt64 = 0
     private var wzLaunchEpoch: UInt64 = 0
     private var wzLastResult = ""
@@ -699,10 +703,10 @@ final class laramgr: ObservableObject {
             let transportReady = connected && wz_transport_ready()
             let capabilities = transportReady ? wz_transport_capabilities() : 0
             let backendCanWrite = transportReady && wz_transport_can_write()
-            // General AX features and this observer validation slice remain
-            // read-only. The legacy runtime still receives the backend
-            // capability for ABI stability, but externalTouch keeps its
-            // internal writer disabled.
+            // The legacy general AX write surface stays off, but the aim
+            // slice is a writer: the observer proves the indicator and the
+            // runtime pair-writes it behind the verified lifecycle gate.
+            // backendCanWrite is the real kernel-RW capability.
             let canWrite = false
             let transportName = transportReady ? String(cString: wz_transport_name()) : "none"
             let imageValid = transportReady && base != 0 && self.wzCheckImage(base)
@@ -730,7 +734,16 @@ final class laramgr: ObservableObject {
                     backendCanWrite
                 )
                 let aimObserverState = aimObserverStarted ? "started" : "closed"
-                self.logmsg("(wz.aim) observer=\(aimObserverState) mode=read-only-validation")
+                self.logmsg("(wz.aim) observer=\(aimObserverState) mode=writer-armed")
+                // Diagnostic-only offset probe.  Resolves every managed field
+                // through the live metadata and reports it, so the hardcoded
+                // constants can be verified against the running game instead
+                // of guessed.  Pure read; never writes to the target.
+                self.wzOffsetProbeArmed = UserDefaults.standard.bool(forKey: "aim.offsetprobe")
+                if self.wzOffsetProbeArmed {
+                    wzaim_offset_probe_reset()
+                    self.logmsg("(wz.aim.offset) probe armed: resolved offsets will be published each frame")
+                }
             } else {
                 wzaim_observer_stop()
                 wzaim_runtime_detach()
@@ -748,7 +761,7 @@ final class laramgr: ObservableObject {
                     transportName.withCString {
                         wzhud_set_transport_state(true, self.wzCanWrite, $0)
                     }
-                    self.logmsg("(wz) connected pid=\(pid) UnityFramework=0x\(String(base, radix: 16)) transport=\(transportName) backendWrite=\(backendCanWrite ? "yes" : "no") generalWrite=disabled aimWrite=disabled")
+                    self.logmsg("(wz) connected pid=\(pid) UnityFramework=0x\(String(base, radix: 16)) transport=\(transportName) backendWrite=\(backendCanWrite ? "yes" : "no") generalWrite=disabled aimWrite=armed")
                     self.wzGameHUDEnabled = true
                     self.wzGameHUDSessionArmed = true
                     UserDefaults.standard.set(false, forKey: "wzGameHUDEnabled")
@@ -923,6 +936,8 @@ final class laramgr: ObservableObject {
         wzAutoKillReader.sync {}
         wzAuxiliaryReaderInFlight = false
         wzAutoKillReaderInFlight = false
+        wzOffsetProbeArmed = false
+        wzaim_offset_probe_reset()
     }
 
     private func wzFrame() {
@@ -953,6 +968,12 @@ final class laramgr: ObservableObject {
         }
         scheduleWZReaders(base: request.1, flags: config.flags)
         _ = wzaim_observer_poll()
+        // The probe is diagnostic only: it republishes the offsets the live
+        // IL2CPP metadata actually resolved so the hardcoded constants can be
+        // checked against the running game.  It never writes to the target.
+        if wzOffsetProbeArmed {
+            _ = wzaim_offset_probe_poll()
+        }
 
         wzTickNumber &+= 1
         wzFPSFrameCount += 1
