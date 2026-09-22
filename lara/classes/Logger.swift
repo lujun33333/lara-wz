@@ -298,13 +298,13 @@ class Logger: ObservableObject {
         let url = docs.appendingPathComponent("lara.log")
         logfileurl = url
         
-        if FileManager.default.fileExists(atPath: url.path) {
-            try? FileManager.default.removeItem(at: url)
+        // Keep previous launches in the exported log.  A relaunch after the
+        // game session must not erase the aim/attach failure we need to inspect.
+        if !FileManager.default.fileExists(atPath: url.path) {
+            FileManager.default.createFile(atPath: url.path, contents: nil, attributes: [
+                FileAttributeKey.protectionKey: FileProtectionType.none
+            ])
         }
-        
-        FileManager.default.createFile(atPath: url.path, contents: nil, attributes: [
-            FileAttributeKey.protectionKey: FileProtectionType.none
-        ])
         
         logfilehandle = try? FileHandle(forWritingTo: url)
         try? logfilehandle?.seekToEnd()

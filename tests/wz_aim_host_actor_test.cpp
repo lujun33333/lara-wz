@@ -13,6 +13,9 @@ static uint32_t observerCalls = 0;
 static uint64_t observedActor = 0;
 static int32_t observedHero = 0;
 static int32_t observedCamp = 0;
+static uint32_t invalidCandidateReads = 0;
+static uint32_t writeCalls = 0;
+static constexpr uint64_t invalidCandidate = 0xd00000000;
 
 template <typename T>
 static void put(uint64_t address, const T &value) {
@@ -32,6 +35,7 @@ static void putBytes(uint64_t address, const void *value, size_t size) {
 extern "C" bool wz_transport_ready(void) { return true; }
 extern "C" uint64_t wz_session_generation(void) { return liveGeneration; }
 extern "C" long wz_read(uint64_t address, void *output, size_t size) {
+    if (address == invalidCandidate) ++invalidCandidateReads;
     auto *bytes = static_cast<uint8_t *>(output);
     for (size_t index = 0; index < size; ++index) {
         const auto found = memory.find(address + index);
@@ -39,6 +43,10 @@ extern "C" long wz_read(uint64_t address, void *output, size_t size) {
         bytes[index] = found->second;
     }
     return static_cast<long>(size);
+}
+extern "C" long wz_write(uint64_t, const void *, size_t) {
+    ++writeCalls;
+    return -1;
 }
 extern "C" long wz_read_fresh_root(uint64_t address, void *output,
                                     size_t size, uint64_t *rebuildCount) {
@@ -82,6 +90,56 @@ static void putPosition(uint64_t actor, uint64_t chainBase,
     putBytes(terminal, position, sizeof(position));
 }
 
+static void putManagedActor(uint64_t actor, uint64_t klass) {
+    const uint64_t fields = klass + 0x1000;
+    const uint64_t actorName = klass + 0x2000;
+    const uint64_t actorNamespace = klass + 0x3000;
+    const uint64_t positionName = klass + 0x4000;
+    const uint64_t metaName = klass + 0x5000;
+    const uint64_t positionType = klass + 0x6000;
+    const uint64_t metaType = klass + 0x7000;
+    const uint64_t noParent = 0;
+    const uint16_t fieldCount = 2, attributes = 0;
+    const uint32_t instanceSize = 0x600;
+    const char name[128] = "ActorLinker";
+    const char nameSpace[128] = "Assets.Scripts.GameLogic";
+    const char positionFieldName[128] = "position";
+    const char metaFieldName[128] = "theMeta";
+    put(actor, klass);
+    put(klass + WZAimObserverPolicy::kClassNameOffset, actorName);
+    put(klass + WZAimObserverPolicy::kClassNamespaceOffset, actorNamespace);
+    put(klass + WZAimObserverPolicy::kClassParentOffset, noParent);
+    put(klass + WZAimObserverPolicy::kClassFieldsOffset, fields);
+    put(klass + WZAimObserverPolicy::kClassInstanceSizeOffset, instanceSize);
+    put(klass + WZAimObserverPolicy::kClassFieldCountOffset, fieldCount);
+    putBytes(actorName, name, sizeof(name));
+    putBytes(actorNamespace, nameSpace, sizeof(nameSpace));
+    putBytes(positionName, positionFieldName, sizeof(positionFieldName));
+    putBytes(metaName, metaFieldName, sizeof(metaFieldName));
+    put(positionType + WZAimObserverPolicy::kTypeAttributesOffset, attributes);
+    put(metaType + WZAimObserverPolicy::kTypeAttributesOffset, attributes);
+    FieldInfoRecord positionField{};
+    positionField.name = positionName;
+    positionField.type = positionType;
+    positionField.parent = klass;
+    positionField.offset = WZAimObserverPolicy::kActorPositionOffset;
+    FieldInfoRecord metaField{};
+    metaField.name = metaName;
+    metaField.type = metaType;
+    metaField.parent = klass;
+    metaField.offset = WZAimObserverPolicy::kActorMetaOffset;
+    put(fields, positionField);
+    put(fields + sizeof(positionField), metaField);
+    const float position[3]{12.0f, 0.0f, -8.0f};
+    putBytes(actor + WZAimObserverPolicy::kActorPositionOffset,
+             position, sizeof(position));
+    const int32_t hero = 196, camp = 1;
+    put(actor + WZAimObserverPolicy::kActorMetaOffset +
+        WZAimObserverPolicy::kActorMetaConfigIdOffset, hero);
+    put(actor + WZAimObserverPolicy::kActorMetaOffset +
+        WZAimObserverPolicy::kActorMetaCampOffset, camp);
+}
+
 int main() {
     constexpr uint64_t base = 0x180000000;
     constexpr uint64_t root = 0x190000000;
@@ -91,6 +149,8 @@ int main() {
     constexpr uint64_t entries = 0x192000000;
     constexpr uint64_t localActor = 0x193000000;
     constexpr uint64_t otherActor = 0x194000000;
+    constexpr uint64_t managedActor = 0x198000000;
+    constexpr uint64_t managedClass = 0x199000000;
 
     put(base + 0x1325A6C0, root);
     put(root + 0x138, manager);
@@ -99,6 +159,9 @@ int main() {
     put(manager + 0x94, heroCount);
     put(entries, localActor);
     put(entries + 0x18, otherActor);
+    const uint8_t emptyRecord[WZAimObserverPolicy::kKoiActorRecordSize]{};
+    putBytes(localActor, emptyRecord, sizeof(emptyRecord));
+    put(localActor + 0x100, invalidCandidate);
     putIdentity(localActor, 196, 1);
     putIdentity(otherActor, 197, 2);
     putPosition(localActor, 0x195000000, 12000, 0, -8000);
@@ -121,18 +184,33 @@ int main() {
 
     assert(!wzaim_host_actor_poll(7, base, &projection));
     assert(observerCalls == 0);
-    assert(wzaim_host_actor_poll(7, base, &projection));
-    assert(observerCalls == 1 && observedActor == localActor);
-    assert(observedHero == 196 && observedCamp == 1);
+    assert(invalidCandidateReads == 1);
+    assert(!wzaim_host_actor_poll(7, base, &projection));
+    assert(invalidCandidateReads == 1 && observerCalls == 0);
+    assert(writeCalls == 0);
 
-    put(base + 0x1325A6C0, root2);
+    // A changed actor root invalidates the failed-candidate backoff even
+    // before any managed actor was stable enough to publish.
     put(root2 + 0x138, manager2);
     put(manager2 + 0x78, entries);
     put(manager2 + 0x94, heroCount);
+    put(base + 0x1325A6C0, root2);
+    assert(!wzaim_host_actor_poll(7, base, &projection));
+    assert(invalidCandidateReads == 2 && observerCalls == 0);
+
+    wzaim_host_actor_reset();
+    putManagedActor(managedActor, managedClass);
+    put(localActor + 0x100, managedActor);
+    assert(!wzaim_host_actor_poll(7, base, &projection));
+    assert(wzaim_host_actor_poll(7, base, &projection));
+    assert(observerCalls == 1 && observedActor == managedActor);
+    assert(observedHero == 196 && observedCamp == 1);
+
+    put(base + 0x1325A6C0, root);
     assert(!wzaim_host_actor_poll(7, base, &projection));
     assert(observerCalls == 2 && observedActor == 0);
     assert(wzaim_host_actor_poll(7, base, &projection));
-    assert(observerCalls == 3 && observedActor == localActor);
+    assert(observerCalls == 3 && observedActor == managedActor);
 
     putIdentity(otherActor, 197, 1);
     putPosition(otherActor, 0x197000000, 13000, 0, -8000);
@@ -144,4 +222,5 @@ int main() {
     liveGeneration = 8;
     assert(!wzaim_host_actor_poll(7, base, &projection));
     assert(observerCalls == 5 && observedActor == 0);
+    assert(writeCalls == 0);
 }
