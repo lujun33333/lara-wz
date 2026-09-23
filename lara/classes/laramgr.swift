@@ -318,7 +318,7 @@ final class laramgr: ObservableObject {
         0x1b,0x2f,0x8a,0x22,0x18,0x37,0x32,0x18,
         0xb3,0xa8,0x6e,0x85,0x3c,0xdb,0x50,0x76
     ]
-    private let wzProfile121MatrixRVA: UInt64 = 0x139F20F0
+    private let wzProfile121MatrixRVA: UInt64 = 0x138A2848
 
     private func wzBytes(_ address: UInt64, _ count: Int) -> [UInt8]? {
         var bytes = [UInt8](repeating: 0, count: count)

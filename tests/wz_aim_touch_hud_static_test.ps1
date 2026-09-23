@@ -27,7 +27,13 @@ Need 'UIControlEventTouchDragInside[\s\S]{0,100}UIControlEventTouchDragOutside' 
 Need 'UIControlEventTouchUpInside[\s\S]{0,100}UIControlEventTouchUpOutside' 'physical skill release does not synthesize Up'
 Need 'UIControlEventTouchCancel' 'physical skill cancellation is not handled'
 Need 'handle_panel_pointer_main\(calibration\.center,WZHUDPointerPhaseBegan,pointerID\)' 'the calibrated skill TouchDown does not enter the shared begin path'
-Need 'renderTick:[\s\S]{0,180}g_aimSyntheticDragActive\) move_aim_touch_drag_main\(\)' '60 Hz target tracking does not drive synthetic Move'
+Need 'render_frame_main\(CFTimeInterval now\)[\s\S]{0,360}g_aimSyntheticDragActive\) move_aim_touch_drag_main\(\)' 'shared foreground/background frame path does not drive synthetic Move'
+Need 'wzhud_local_hosting_ready\(\) \|\| wzhud_springboard_hosting_ready\(\)' 'aim input does not require a validated HUD host'
+$aimTargetStart = $source.IndexOf('static BOOL copy_aim_touch_target_main(WZAimRuntimeTargetSnapshot *snapshot,', $source.IndexOf('static BOOL copy_aim_touch_target_main(WZAimRuntimeTargetSnapshot *snapshot,') + 1)
+$aimTargetEnd = $source.IndexOf('static BOOL aim_touch_hit_test_main', $aimTargetStart)
+if ($source.Substring($aimTargetStart, $aimTargetEnd - $aimTargetStart) -match 'g_sceneActive') {
+    throw 'FAIL: hosted aim input is blocked when the game foregrounds'
+}
 Need 'kWZAimTouchMoveInterval = 1\.0 / 30\.0' 'remote aim drag move cadence is no longer bounded at 30 Hz'
 Need 'now - g_aimLastMoveSubmitAt < kWZAimTouchMoveInterval' 'aim drag does not throttle remote HID move submissions'
 Need 'wzax_touch_drag_end_async' 'physical End is not forwarded as synthetic Up'

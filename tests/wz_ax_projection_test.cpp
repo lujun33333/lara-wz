@@ -250,12 +250,14 @@ int main() {
     // link must stay unreadable rather than falling back to the old slot.
     profile121 = true;
     constexpr uintptr_t newUnity = UINT64_C(0x810000000);
-    constexpr uintptr_t newSlot = newUnity + UINT64_C(0x139F20F0);
+    constexpr uintptr_t newSlot = newUnity + UINT64_C(0x138A2848);
     constexpr uintptr_t newRoot = UINT64_C(0x820000000);
     constexpr uintptr_t newOwner = UINT64_C(0x820001000);
     constexpr uintptr_t newHolder = UINT64_C(0x820002000);
     constexpr uintptr_t newCamera = UINT64_C(0x820003000);
     gMatrixAddressCache = {};
+    // Actual failed 12.1 device log: the former candidate was not a pointer.
+    StoreValue(newUnity + UINT64_C(0x139F20F0), UINT64_C(0x20032c53));
     StoreValue(newSlot, newRoot);
     StoreValue(newRoot + 0xB8, newOwner);
     StoreValue(newOwner, newHolder);

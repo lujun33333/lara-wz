@@ -11,7 +11,7 @@ import sys
 
 SOURCE = pathlib.Path(__file__).resolve().parents[1] / "lara/classes/laramgr.swift"
 EXPECTED_UUID = bytes.fromhex("1b2f8a2218373218b3a86e853cdb5076")
-EXPECTED_MATRIX_ROOT = 0x139F20F0
+EXPECTED_MATRIX_ROOT = 0x138A2848
 
 
 def macho_header(path):
@@ -65,7 +65,7 @@ def main(path):
     assert uuid_values is not None
     source_uuid = bytes(int(x, 16) for x in re.findall(r"0x([0-9a-fA-F]{2})", uuid_values.group(1)))
     assert source_uuid == EXPECTED_UUID
-    assert "private let wzProfile121MatrixRVA: UInt64 = 0x139F20F0" in source
+    assert "private let wzProfile121MatrixRVA: UInt64 = 0x138A2848" in source
     assert re.search(r"let profileReadable = imageValid &&\s+self\.wzCollectorPagesReadable\(base,\s+profile121: image\.profile121\)", source)
     assert "let aimFunctional = valid && !image.profile121" in source
     assert "wzesp_select_profile121(image.profile121 ? 1 : 0)" in source
@@ -83,12 +83,14 @@ def main(path):
     projection = (SOURCE.parents[2] / "lara/kexploit/wz/KoiProjection.mm").read_text(encoding="utf-8")
     assert "kActorRootRVA121 = 0x13E5C698" in collector
     assert "kMonsterRootRVA121 = 0x133CD510" in collector
-    assert "kKoiMatrixRootRVA121 = 0x139F20F0" in projection
+    assert "kKoiMatrixRootRVA121 = 0x138A2848" in projection
     uuid, bss = macho_header(path)
     assert uuid == EXPECTED_UUID, (uuid, EXPECTED_UUID)
     assert bss is not None and bss[0] <= EXPECTED_MATRIX_ROOT < bss[0] + bss[1]
-    assert root_reference(path, 0x1C567C) == EXPECTED_MATRIX_ROOT
-    assert root_reference(path, 0x74416F0) == EXPECTED_MATRIX_ROOT
+    # These matched a different singleton, as disproved by the device log.
+    assert root_reference(path, 0x1C567C) == 0x139F20F0
+    assert root_reference(path, 0x74416F0) == 0x139F20F0
+    assert EXPECTED_MATRIX_ROOT != 0x139F20F0
     assert root_reference(path, 0x8C23B3C) == 0x12FA94D8
     assert root_reference(path, 0x8C23B4C, 8) == 0x130EB9B0
     assert qword(path, 0x12FA94D8) == 0x13E5C698
@@ -103,7 +105,7 @@ def main(path):
         assert qword(old_path, 0x123DFAE8) == 0x1325A6C0
         assert qword(old_path, 0x125130D0) == 0x127E3240
         assert qword(old_path, 0x123DFAF0) == 0x8C36F54
-    print("12.1 static gate OK: UUID, matrix refs, actor/monster table cross-version match")
+    print("12.1 static gate OK: UUID, corrected camera-root wiring, actor/monster table match")
 
 
 if __name__ == "__main__":
