@@ -14,6 +14,10 @@ extern "C" bool wzaim_runtime_consume_snapshot(
         const KoiProjectionState *) {
     return false;
 }
+extern "C" uint64_t wz_session_generation(void) { return 1; }
+extern "C" bool wzaim_host_actor_poll(
+        uint64_t, uint64_t, const KoiProjectionState *) { return false; }
+extern "C" void wzaim_host_actor_reset(void) {}
 
 static std::map<uint64_t, uint8_t> memory;
 static std::atomic<int> touchCalls{0};

@@ -305,11 +305,20 @@ final class laramgr: ObservableObject {
     private var wzLastHUDControlFlags = UInt32.max
     private var wzLastConfigFingerprint: UInt64 = UInt64.max
     private var wzConsecutiveListFailures = 0
+    private var wzProfile121 = false
 
     private let wzExpectedUUID: [UInt8] = [
         0x6a,0x83,0x8f,0x46,0xa5,0xe8,0x3e,0xc9,
         0xbb,0xce,0x6b,0x01,0xab,0x2f,0xfa,0xd4
     ]
+    // 12.1.10103 roots are matched by official binary tables/functions. The
+    // downstream AX/Koi record and camera links remain device candidates.
+    // Aim and other writes must not run against this profile.
+    private let wzProfile121UUID: [UInt8] = [
+        0x1b,0x2f,0x8a,0x22,0x18,0x37,0x32,0x18,
+        0xb3,0xa8,0x6e,0x85,0x3c,0xdb,0x50,0x76
+    ]
+    private let wzProfile121MatrixRVA: UInt64 = 0x139F20F0
 
     private func wzBytes(_ address: UInt64, _ count: Int) -> [UInt8]? {
         var bytes = [UInt8](repeating: 0, count: count)
@@ -318,7 +327,7 @@ final class laramgr: ObservableObject {
         }
         return n == count ? bytes : nil
     }
-    private func wzCheckImage(_ base: UInt64) -> Bool {
+    private func wzCheckImage(_ base: UInt64, expectedUUID: [UInt8]) -> Bool {
         guard let header = wzBytes(base, 32) else { return false }
         func u32(_ b: [UInt8], _ p: Int) -> UInt32 {
             UInt32(b[p]) | UInt32(b[p+1]) << 8 | UInt32(b[p+2]) << 16 | UInt32(b[p+3]) << 24
@@ -338,25 +347,31 @@ final class laramgr: ObservableObject {
                 guard size >= 24 else { return false }
                 let uuid = Array(commands[(cursor+8)..<(cursor+24)])
                 logmsg("(wz) UnityFramework UUID=" + uuid.map { String(format: "%02x", $0) }.joined())
-                return uuid == wzExpectedUUID
+                return uuid == expectedUUID
             }
             cursor += size
         }
         return false
     }
-    private func wzUnityFrameworkBase() -> UInt64 {
-        wzExpectedUUID.withUnsafeBufferPointer { uuid in
+    private func wzUnityFrameworkBase() -> (base: UInt64, profile121: Bool) {
+        let latest = wzProfile121UUID.withUnsafeBufferPointer { uuid in
             wz_find_image_base(uuid.baseAddress, 6)
         }
+        if latest != 0 { return (latest, true) }
+        let legacy = wzExpectedUUID.withUnsafeBufferPointer { uuid in
+            wz_find_image_base(uuid.baseAddress, 6)
+        }
+        return (legacy, false)
     }
-    private func wzCollectorPagesReadable(_ unityBase: UInt64) -> Bool {
+    private func wzCollectorPagesReadable(_ unityBase: UInt64,
+                                          profile121: Bool) -> Bool {
         // These are page-readability probes, not value assertions: the slots
         // may legitimately contain zero before a match begins, but the pages
         // themselves must be readable by the selected external transport.
-        let requiredRVAs: [(String, UInt64)] = [
-            ("matrix", 0x12CA9580),
-            ("actor", 0x1325A6C0)
-        ]
+        let requiredRVAs: [(String, UInt64)] = profile121
+            ? [("matrix", wzProfile121MatrixRVA),
+               ("actor", 0x13E5C698)]
+            : [("matrix", 0x12CA9580), ("actor", 0x1325A6C0)]
         var readable = 0
         for (name, rva) in requiredRVAs {
             var slot: UInt64 = 0
@@ -694,12 +709,13 @@ final class laramgr: ObservableObject {
         wzEpoch &+= 1
         let epoch = wzEpoch
         let build = Bundle.main.infoDictionary?["LARABuildSourceCommit"] as? String ?? "unknown"
-        logmsg("(lara-wz) build=\(build) profile=smoba-11.4.10103/6a838f46")
+        logmsg("(lara-wz) build=\(build) profiles=smoba-11.4.10103/6a838f46,smoba-12.1.10103/1b2f8a22-read-candidate")
         logmsg("正在连接进程「\(process)」")
         wzWorker.async { [weak self] in
             guard let self else { return }
             let connected = process.withCString { wz_connect($0) }
-            let base = connected ? self.wzUnityFrameworkBase() : 0
+            let image = connected ? self.wzUnityFrameworkBase() : (base: UInt64(0), profile121: false)
+            let base = image.base
             let transportReady = connected && wz_transport_ready()
             let capabilities = transportReady ? wz_transport_capabilities() : 0
             let backendCanWrite = transportReady && wz_transport_can_write()
@@ -709,40 +725,53 @@ final class laramgr: ObservableObject {
             // backendCanWrite is the real kernel-RW capability.
             let canWrite = false
             let transportName = transportReady ? String(cString: wz_transport_name()) : "none"
-            let imageValid = transportReady && base != 0 && self.wzCheckImage(base)
-            let profileReadable = imageValid && self.wzCollectorPagesReadable(base)
+            let expectedUUID = image.profile121 ? self.wzProfile121UUID : self.wzExpectedUUID
+            let imageValid = transportReady && base != 0 &&
+                self.wzCheckImage(base, expectedUUID: expectedUUID)
+            // Static root-table migration permits a 12.1 read-only collector
+            // candidate. Existing downstream count/ID/matrix checks still
+            // gate publication; device readback is required to confirm them.
+            let profileReadable = imageValid &&
+                self.wzCollectorPagesReadable(base,
+                                              profile121: image.profile121)
             let valid = imageValid && profileReadable
+            let aimFunctional = valid && !image.profile121
             let pid = wz_connected_pid()
             if valid {
                 wzesp_reset()
-                self.wzReaderGeneration &+= 1
-                self.wzAuxiliaryReaderInFlight = false
-                self.wzAutoKillReaderInFlight = false
-                wzesp_readers_start(self.wzReaderGeneration)
-                wzaim_runtime_attach(
-                    pid,
-                    wz_session_generation(),
-                    base,
-                    imageValid,
-                    backendCanWrite
-                )
-                let aimObserverStarted = wzaim_observer_start(
-                    pid,
-                    wz_session_generation(),
-                    base,
-                    imageValid,
-                    backendCanWrite
-                )
-                let aimObserverState = aimObserverStarted ? "started" : "closed"
-                self.logmsg("(wz.aim) observer=\(aimObserverState) mode=writer-armed")
-                // Diagnostic-only offset probe.  Resolves every managed field
-                // through the live metadata and reports it, so the hardcoded
-                // constants can be verified against the running game instead
-                // of guessed.  Pure read; never writes to the target.
-                self.wzOffsetProbeArmed = UserDefaults.standard.bool(forKey: "aim.offsetprobe")
-                if self.wzOffsetProbeArmed {
-                    wzaim_offset_probe_reset()
-                    self.logmsg("(wz.aim.offset) probe armed: resolved offsets will be published each frame")
+                wzesp_select_profile121(image.profile121 ? 1 : 0)
+                if aimFunctional {
+                    self.wzReaderGeneration &+= 1
+                    self.wzAuxiliaryReaderInFlight = false
+                    self.wzAutoKillReaderInFlight = false
+                    wzesp_readers_start(self.wzReaderGeneration)
+                    wzaim_runtime_attach(
+                        pid,
+                        wz_session_generation(),
+                        base,
+                        imageValid,
+                        backendCanWrite
+                    )
+                    let aimObserverStarted = wzaim_observer_start(
+                        pid,
+                        wz_session_generation(),
+                        base,
+                        imageValid,
+                        backendCanWrite
+                    )
+                    let aimObserverState = aimObserverStarted ? "started" : "closed"
+                    self.logmsg("(wz.aim) observer=\(aimObserverState) mode=writer-armed")
+                    // Pure-read offset probe for the known 11.4 profile.
+                    self.wzOffsetProbeArmed = UserDefaults.standard.bool(forKey: "aim.offsetprobe")
+                    if self.wzOffsetProbeArmed {
+                        wzaim_offset_probe_reset()
+                        self.logmsg("(wz.aim.offset) probe armed: resolved offsets will be published each frame")
+                    }
+                } else {
+                    self.wzOffsetProbeArmed = false
+                    wzaim_observer_stop()
+                    wzaim_runtime_detach()
+                    self.logmsg("(wz.profile.121) static roots selected; old downstream layout is device-unverified; aim writer closed")
                 }
             } else {
                 wzaim_observer_stop()
@@ -753,6 +782,7 @@ final class laramgr: ObservableObject {
                 guard self.wzEpoch == epoch else { return }
                 self.wzRunning = false
                 self.wzAttached = valid
+                self.wzProfile121 = valid && image.profile121
                 self.wzBase = valid ? base : 0
                 self.wzTransportName = valid ? transportName : "none"
                 self.wzTransportCapabilities = valid ? capabilities : 0
@@ -761,7 +791,7 @@ final class laramgr: ObservableObject {
                     transportName.withCString {
                         wzhud_set_transport_state(true, self.wzCanWrite, $0)
                     }
-                    self.logmsg("(wz) connected pid=\(pid) UnityFramework=0x\(String(base, radix: 16)) transport=\(transportName) backendWrite=\(backendCanWrite ? "yes" : "no") generalWrite=disabled aimWrite=armed")
+                    self.logmsg("(wz) connected pid=\(pid) UnityFramework=0x\(String(base, radix: 16)) transport=\(transportName) backendWrite=\(backendCanWrite ? "yes" : "no") generalWrite=disabled aimWrite=\(aimFunctional ? "armed" : "closed")")
                     self.wzGameHUDEnabled = true
                     self.wzGameHUDSessionArmed = true
                     UserDefaults.standard.set(false, forKey: "wzGameHUDEnabled")
@@ -770,7 +800,9 @@ final class laramgr: ObservableObject {
                     // it must not re-enter window creation after foregrounding.
                     let requested = wzhud_is_enabled()
                     self.startWZLoop()
-                    self.updateGameHUD("王者已连接\n等待功能开关")
+                    self.updateGameHUD(image.profile121
+                        ? "12.1 只读绘制候选\n等待对局数据"
+                        : "王者已连接\n等待功能开关")
                     let hudError = String(cString: wzhud_last_error())
                     self.logmsg("(wz.hud) requested=\(requested ? "yes" : "no") active=\(self.wzGameHUDActive ? "yes" : "no") error=\(hudError.isEmpty ? "none" : hudError)")
                 } else {
@@ -824,6 +856,7 @@ final class laramgr: ObservableObject {
             self.wzFPSFrameCount = 0
             DispatchQueue.main.async {
                 self.wzAttached = false
+                self.wzProfile121 = false
                 self.wzBase = 0
                 self.wzTransportName = "none"
                 self.wzTransportCapabilities = 0
@@ -947,7 +980,7 @@ final class laramgr: ObservableObject {
             wzhud_get_canvas_size(&canvasWidth, &canvasHeight)
             return (wzEpoch, wzBase, wzAttached,
                     CGSize(width: CGFloat(canvasWidth),
-                           height: CGFloat(canvasHeight)))
+                           height: CGFloat(canvasHeight)), wzProfile121)
         }
         guard request.2, request.1 != 0 else { return }
         guard wz_transport_ready() else {
@@ -958,21 +991,29 @@ final class laramgr: ObservableObject {
         var config = wzesp_config_t()
         wzhud_copy_wz_config(&config)
         config.flags &= UInt32(WZESP_READ_FEATURES)
+        if request.4 {
+            // 12.1 only has three statically migrated roots. These switches
+            // avoid old host/auxiliary/skill/aim addresses and all writes.
+            config.flags &= UInt32(WZESP_SHOW_AVATAR | WZESP_SHOW_BOX |
+                WZESP_SHOW_MINIMAP | WZESP_SHOW_MONSTER |
+                WZESP_SHOW_MONSTER_ENTITY | WZESP_SHOW_SOLDIER |
+                WZESP_SHOW_SOLDIER_ENTITY | WZESP_SHOW_MAP_ADJUSTMENT)
+        }
         let drawEnabled = config.flags != 0
         let fingerprint = wzConfigFingerprint(config)
         let configChanged = fingerprint != wzLastConfigFingerprint
         wzLastConfigFingerprint = fingerprint
         wzLastHUDControlFlags = config.flags
-        if config.flags & UInt32(WZESP_COLLECT_AIM) == 0 {
+        if request.4 || config.flags & UInt32(WZESP_COLLECT_AIM) == 0 {
             wzaim_host_actor_reset()
         }
-        scheduleWZReaders(base: request.1, flags: config.flags)
-        _ = wzaim_observer_poll()
-        // The probe is diagnostic only: it republishes the offsets the live
-        // IL2CPP metadata actually resolved so the hardcoded constants can be
-        // checked against the running game.  It never writes to the target.
-        if wzOffsetProbeArmed {
-            _ = wzaim_offset_probe_poll()
+        if !request.4 {
+            scheduleWZReaders(base: request.1, flags: config.flags)
+            _ = wzaim_observer_poll()
+            // Pure-read offset probe for the verified legacy profile only.
+            if wzOffsetProbeArmed {
+                _ = wzaim_offset_probe_poll()
+            }
         }
 
         wzTickNumber &+= 1
@@ -1005,7 +1046,8 @@ final class laramgr: ObservableObject {
         }
         if wzConsecutiveListFailures >= 120 {
             wzConsecutiveListFailures = 0
-            if !wzCheckImage(request.1) {
+            let expectedUUID = request.4 ? wzProfile121UUID : wzExpectedUUID
+            if !wzCheckImage(request.1, expectedUUID: expectedUUID) {
                 wzhud_update_wz_snapshot(nil, 0)
                 wzTimer?.cancel()
                 wzTimer = nil
@@ -1021,6 +1063,7 @@ final class laramgr: ObservableObject {
                 DispatchQueue.main.async { [weak self] in
                     guard let self, self.wzEpoch == epoch else { return }
                     self.wzAttached = false
+                    self.wzProfile121 = false
                     self.wzBase = 0
                     self.wzTransportName = "none"
                     self.wzTransportCapabilities = 0
@@ -1386,6 +1429,7 @@ final class laramgr: ObservableObject {
         }
         wzhud_update_wz_snapshot(nil, 0)
         wzAttached = false
+        wzProfile121 = false
         wzRunning = false
         wzBase = 0
         wzTransportName = "none"

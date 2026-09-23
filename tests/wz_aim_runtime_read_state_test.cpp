@@ -37,6 +37,7 @@ KoiEntity Enemy(uint64_t stableId, float x, float z, int health = 500) {
 
 extern "C" bool wz_transport_ready(void) { return true; }
 extern "C" bool wz_transport_can_write(void) { return true; }
+extern "C" const char *wz_transport_name(void) { return "mapped-pages"; }
 extern "C" int wz_connected_pid(void) { return gConnectedPid; }
 extern "C" uint64_t wz_session_generation(void) {
     return gConnectedGeneration;

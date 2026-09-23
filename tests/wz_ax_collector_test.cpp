@@ -2,6 +2,7 @@
 #include "../lara/kexploit/wz/YuanbaoCollector.mm"
 #include <cassert>
 #include <map>
+extern "C" uint8_t wzesp_profile121(void) { return 0; }
 
 static std::map<uint64_t, uint8_t> memory;
 template<class T> void put(uint64_t address, const T &value) {

@@ -835,8 +835,9 @@ if signature_entries != {"CodeResources"}:
     raise SystemExit(f"signature entries mismatch: {sorted(signature_entries)}")
 PY
 
-WZ_UUID="6a838f46-a5e8-3ec9-bbce-6b01ab2ffad4"
-PACKAGE_STEM="AX-Pro-1.2.8-${SOURCE_COMMIT_SHORT}-${SOURCE_FINGERPRINT_SHORT}${AUTH_BYPASS_PACKAGE_SUFFIX}-${WZ_UUID}"
+WZ_UUID="1b2f8a22-1837-3218-b3a8-6e853cdb5076"
+WZ_LEGACY_UUID="6a838f46-a5e8-3ec9-bbce-6b01ab2ffad4"
+PACKAGE_STEM="AX-Pro-1.2.8-${SOURCE_COMMIT_SHORT}-${SOURCE_FINGERPRINT_SHORT}${AUTH_BYPASS_PACKAGE_SUFFIX}-drawcand121-${WZ_UUID}"
 STAGE="$ROOT/build/package-wz"
 OUTPUT_IPA="$ROOT/$PACKAGE_STEM.ipa"
 OUTPUT_MANIFEST="$ROOT/$PACKAGE_STEM.json"
@@ -940,9 +941,13 @@ cat > "$OUTPUT_MANIFEST" <<JSON
 {
   "targetProcess": "smoba",
   "targetBundle": "com.tencent.smoba",
-  "targetVersion": "11.4.10103",
+  "targetVersion": "12.1.10103",
+  "targetMode": "read-only-drawing-candidate",
+  "deviceVerified": false,
   "bundleIdentifier": "$EXPECTED_BUNDLE_IDENTIFIER",
   "unityFrameworkUUID": "$WZ_UUID",
+  "legacyTargetVersion": "11.4.10103",
+  "legacyUnityFrameworkUUID": "$WZ_LEGACY_UUID",
   "sourceState": "$SOURCE_STATE",
   "sourceCommit": "$SOURCE_COMMIT",
   "sourceTree": "$SOURCE_TREE",

@@ -112,10 +112,12 @@ static void putManagedActor(uint64_t actor, uint64_t klass) {
     put(klass + WZAimObserverPolicy::kClassFieldsOffset, fields);
     put(klass + WZAimObserverPolicy::kClassInstanceSizeOffset, instanceSize);
     put(klass + WZAimObserverPolicy::kClassFieldCountOffset, fieldCount);
-    putBytes(actorName, name, sizeof(name));
-    putBytes(actorNamespace, nameSpace, sizeof(nameSpace));
-    putBytes(positionName, positionFieldName, sizeof(positionFieldName));
-    putBytes(metaName, metaFieldName, sizeof(metaFieldName));
+    // The remote reader must not require 128 readable bytes after a NUL.
+    putBytes(actorName, name, std::strlen(name) + 1);
+    putBytes(actorNamespace, nameSpace, std::strlen(nameSpace) + 1);
+    putBytes(positionName, positionFieldName,
+             std::strlen(positionFieldName) + 1);
+    putBytes(metaName, metaFieldName, std::strlen(metaFieldName) + 1);
     put(positionType + WZAimObserverPolicy::kTypeAttributesOffset, attributes);
     put(metaType + WZAimObserverPolicy::kTypeAttributesOffset, attributes);
     FieldInfoRecord positionField{};
@@ -141,6 +143,25 @@ static void putManagedActor(uint64_t actor, uint64_t klass) {
 }
 
 int main() {
+    std::string parsed;
+    const uint64_t pageTail = 0x1A0000FF4;
+    const char atTail[] = "ActorLinker";
+    putBytes(pageTail, atTail, sizeof(atTail));
+    assert(ReadCString(pageTail, &parsed) && parsed == "ActorLinker");
+    const uint64_t unreadableNextPage = 0x1A0010FFE;
+    const char unterminatedAtTail[2]{'A', 'B'};
+    putBytes(unreadableNextPage, unterminatedAtTail,
+             sizeof(unterminatedAtTail));
+    assert(!ReadCString(unreadableNextPage, &parsed));
+    const uint64_t noTerminator = 0x1A0020000;
+    char longBytes[128]{};
+    std::memset(longBytes, 'X', sizeof(longBytes));
+    putBytes(noTerminator, longBytes, sizeof(longBytes));
+    assert(!ReadCString(noTerminator, &parsed));
+    longBytes[127] = 0;
+    putBytes(noTerminator, longBytes, sizeof(longBytes));
+    assert(ReadCString(noTerminator, &parsed) && parsed.size() == 127);
+
     constexpr uint64_t base = 0x180000000;
     constexpr uint64_t root = 0x190000000;
     constexpr uint64_t root2 = 0x190100000;

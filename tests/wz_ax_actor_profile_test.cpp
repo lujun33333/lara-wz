@@ -1,6 +1,8 @@
 #include "../lara/kexploit/wz/YuanbaoCollector.mm"
 #include <cassert>
 #include <map>
+static bool profile121 = false;
+extern "C" uint8_t wzesp_profile121(void) { return profile121 ? 1 : 0; }
 static std::map<uint64_t, uint8_t> memory;
 template<class T> void put(uint64_t address, const T &value) {
     const auto *bytes = reinterpret_cast<const uint8_t *>(&value);
@@ -162,4 +164,23 @@ int main() {
                             cacheHeaders, 1);
     assert(gAXHeroCache[0].moved);
     assert(gAXHeroCache[0].pending == 0);
+
+    // Only root-slot selection is migrated statically. The old downstream
+    // manager/count layout remains guarded by ResolveActorTables at runtime.
+    profile121 = true;
+    memory.clear();
+    put(unity + 0x13E5C698, root);
+    put(root + 0x138, manager);
+    put(manager + 0x78, heroes);
+    put(manager + 0x94, int32_t(10));
+    tables = {};
+    diagnostics = {};
+    assert(ResolveActorTables(reader, unity, false, &tables, &diagnostics));
+    assert(tables.heroTableValid && tables.heroCount == 10);
+    put(manager + 0x94, int32_t(201));
+    tables = {};
+    assert(ResolveActorTables(reader, unity, false, &tables, &diagnostics));
+    assert(!tables.heroTableValid);
+    assert(MonsterRootRVA() == 0x133CD510);
+    profile121 = false;
 }

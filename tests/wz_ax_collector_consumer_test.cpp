@@ -13,6 +13,10 @@ extern "C" bool wzaim_runtime_consume_snapshot(
         const KoiProjectionState *) {
     return false;
 }
+extern "C" uint64_t wz_session_generation(void) { return 1; }
+extern "C" bool wzaim_host_actor_poll(
+        uint64_t, uint64_t, const KoiProjectionState *) { return false; }
+extern "C" void wzaim_host_actor_reset(void) {}
 
 static std::map<uint64_t, uint8_t> memory;
 
@@ -176,4 +180,19 @@ int main() {
     assert(soldierCount == 1);
     assert(items[0].category == KoiEntityCategorySoldier);
     assert(items[0].enemy && items[0].minimapValid);
+
+    // Synthetic 12.1 route: remove the old slot, publish only the migrated
+    // actor root, and require the same validated hero consumer to draw.
+    wzesp_reset();
+    for (uint64_t byte = 0; byte < 8; ++byte)
+        memory.erase(unity + 0x1325A6C0 + byte);
+    put(unity + 0x13E5C698, root);
+    wzesp_select_profile121(1);
+    config.flags = WZESP_SHOW_BOX;
+    std::memset(items, 0, sizeof(items));
+    const int candidateCount = wzesp_tick(
+        unity, 1000, 500, &config, items, 8);
+    assert(candidateCount == 1);
+    assert(items[0].configId == 101 && items[0].onScreen);
+    wzesp_reset();
 }

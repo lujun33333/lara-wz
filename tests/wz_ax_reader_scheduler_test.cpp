@@ -6,6 +6,7 @@
 #include <atomic>
 #include <cassert>
 #include <chrono>
+extern "C" uint8_t wzesp_profile121(void) { return 0; }
 #include <map>
 #include <thread>
 

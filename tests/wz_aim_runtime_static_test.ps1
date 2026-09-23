@@ -132,7 +132,12 @@ Need $swift 'wzaim_observer_start\([\s\S]*?imageValid,\s*backendCanWrite\s*\)' '
 Need $swift 'wzaim_observer_poll\(\)' 'verified observer is not polled by the WZ worker'
 Need $swift 'config\.flags & UInt32\(WZESP_COLLECT_AIM\) == 0[\s\S]{0,100}wzaim_host_actor_reset\(\)' 'aim disable does not immediately revoke the host actor proof'
 Need $swift 'mode=writer-armed' 'observer lifecycle log does not identify the armed writer mode'
-Need $swift 'aimWrite=armed' 'connection log does not report that the observer-gated writer is armed'
+Need $swift 'let profileReadable = imageValid &&[\s\S]{0,140}wzCollectorPagesReadable\(base,[\s\S]{0,100}profile121: image\.profile121\)' 'profile-specific read-only collector page gate missing'
+Need $swift 'let aimFunctional = valid && !image\.profile121' 'new profile is not excluded from the legacy aim writer gate'
+Need $swift 'if aimFunctional \{[\s\S]{0,600}wzaim_runtime_attach\(' 'observer writer attach is not inside the legacy-only branch'
+if (-not $swift.Contains('aimWrite=\(aimFunctional ? "armed" : "closed")')) {
+    throw 'FAIL: connection log does not distinguish functional writer from diagnostic-only profile'
+}
 Need $hud 'WZESP_COLLECT_AIM' 'aim UI does not request the shared collector snapshot'
 Need $consumer 'wzaim_runtime_consume_snapshot' 'shared collector does not feed the aim consumer'
 Need $consumer 'wzaim_runtime_consume_snapshot\([\s\S]{0,160}&projection\)' 'aim consumer does not receive the collector frame projection'

@@ -8,6 +8,8 @@
 static std::map<uint64_t, uint8_t> gMemory;
 static size_t gReadCount = 0;
 static size_t gTerminalChangeResetCount = 0;
+static bool profile121 = false;
+extern "C" uint8_t wzesp_profile121(void) { return profile121 ? 1 : 0; }
 
 extern "C" long wz_read(uint64_t address, void *output, size_t size);
 extern "C" long wz_read_fresh_root(uint64_t address, void *output,
@@ -243,4 +245,32 @@ int main() {
     assert(!KoiProjectionRefresh(
         initialInvalidUnity, 1920, 1080, &projection));
     assert(gTerminalChangeResetCount == beforeInitiallyInvalid);
+
+    // 12.1 selects the independently matched root; a missing downstream
+    // link must stay unreadable rather than falling back to the old slot.
+    profile121 = true;
+    constexpr uintptr_t newUnity = UINT64_C(0x810000000);
+    constexpr uintptr_t newSlot = newUnity + UINT64_C(0x139F20F0);
+    constexpr uintptr_t newRoot = UINT64_C(0x820000000);
+    constexpr uintptr_t newOwner = UINT64_C(0x820001000);
+    constexpr uintptr_t newHolder = UINT64_C(0x820002000);
+    constexpr uintptr_t newCamera = UINT64_C(0x820003000);
+    gMatrixAddressCache = {};
+    StoreValue(newSlot, newRoot);
+    StoreValue(newRoot + 0xB8, newOwner);
+    StoreValue(newOwner, newHolder);
+    StoreValue(newHolder + 8, newCamera);
+    StoreMatrix(newCamera + 0x128, 1.0f, 1.0f);
+    assert(KoiProjectionRefresh(newUnity, 1920, 1080, &projection));
+    assert(projection.matrixRootSlotAddress == newSlot);
+    StoreMatrix(newCamera + 0x128,
+                std::numeric_limits<float>::quiet_NaN(), 1.0f);
+    assert(!KoiProjectionRefresh(newUnity, 1920, 1080, &projection));
+    assert(projection.matrixChainStage == KoiMatrixChainStageMatrixInvalid);
+    StoreMatrix(newCamera + 0x128, 1.0f, 1.0f);
+    gMatrixAddressCache.nextProbe = 0;
+    assert(KoiProjectionRefresh(newUnity, 1920, 1080, &projection));
+    gMemory.erase(newCamera + 0x128);
+    assert(!KoiProjectionRefresh(newUnity, 1920, 1080, &projection));
+    profile121 = false;
 }
