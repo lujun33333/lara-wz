@@ -992,9 +992,10 @@ final class laramgr: ObservableObject {
         wzhud_copy_wz_config(&config)
         config.flags &= UInt32(WZESP_READ_FEATURES)
         if request.4 {
-            // 12.1 only has three statically migrated roots. These switches
-            // avoid old host/auxiliary/skill/aim addresses and all writes.
+            // 12.1 roots and AX131 actor fields support these read-only features.
+            // Keep unverified host/auxiliary/skill/aim addresses and writes off.
             config.flags &= UInt32(WZESP_SHOW_AVATAR | WZESP_SHOW_BOX |
+                WZESP_SHOW_HEALTH | WZESP_SHOW_RECALL | WZESP_SHOW_ENEMY_VISION |
                 WZESP_SHOW_MINIMAP | WZESP_SHOW_MONSTER |
                 WZESP_SHOW_MONSTER_ENTITY | WZESP_SHOW_SOLDIER |
                 WZESP_SHOW_SOLDIER_ENTITY | WZESP_SHOW_MAP_ADJUSTMENT)

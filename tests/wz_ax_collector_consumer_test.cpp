@@ -181,8 +181,8 @@ int main() {
     assert(items[0].category == KoiEntityCategorySoldier);
     assert(items[0].enemy && items[0].minimapValid);
 
-    // Synthetic 12.1 route: remove the old slot, publish only the migrated
-    // actor root, and require the same validated hero consumer to draw.
+    // Regression: roots/count were correct on device (10 slots), but the
+    // 11.4 header/layout published zero heroes while 19 monsters still drew.
     wzesp_reset();
     for (uint64_t byte = 0; byte < 8; ++byte)
         memory.erase(unity + 0x1325A6C0 + byte);
@@ -190,9 +190,39 @@ int main() {
     wzesp_select_profile121(1);
     config.flags = WZESP_SHOW_BOX;
     std::memset(items, 0, sizeof(items));
+    assert(wzesp_tick(unity, 1000, 500, &config, items, 8) == 0);
+    // Only AX131's header and pointer chain make this hero renderable.
+    put(enemy + 0x28, enemyHeader);
+    put(friendly + 0x28, friendlyHeader);
+    put(enemy + 0xA8, uintptr_t(0x170000000));
+    put(friendly + 0xA8, uintptr_t(0x180000000));
+    put(enemy + 0x1D0, enemyHealth);
+    put(enemyHealth + 0xC0, int32_t(100));
+    put(enemyHealth + 0xC8, int32_t(1000));
+    config.flags = WZESP_SHOW_BOX | WZESP_SHOW_AVATAR |
+        WZESP_SHOW_MINIMAP | WZESP_SHOW_HEALTH | WZESP_SHOW_ENEMY_VISION;
     const int candidateCount = wzesp_tick(
         unity, 1000, 500, &config, items, 8);
     assert(candidateCount == 1);
     assert(items[0].configId == 101 && items[0].onScreen);
+    assert(items[0].minimapValid);
+    assert(std::fabs(items[0].healthRatio - 0.1f) < 0.0001f);
+    MemoryReader profileReader;
+    KoiEntity profileEntity{};
+    ReadAXEntityState(profileReader, enemy, true, &profileEntity);
+    assert(profileEntity.axHealth == 100 && profileEntity.axHealthTotal == 1000);
+    assert(items[0].minimapExposureValid && !items[0].minimapDimmed);
+    // Reject torn/invalid 12.1 health reads instead of publishing a ratio.
+    put(enemyHealth + 0xC0, int32_t(1001));
+    profileEntity = {};
+    ReadAXEntityState(profileReader, enemy, true, &profileEntity);
+    assert(!profileEntity.axHealthValid);
+    put(enemyHealth + 0xC0, int32_t(0));
+    profileEntity = {};
+    ReadAXEntityState(profileReader, enemy, true, &profileEntity);
+    assert(profileEntity.axHealthValid && profileEntity.axHealth == 0);
+    // Existing life-state debounce requires two matching zero samples.
+    ReadAXEntityState(profileReader, enemy, true, &profileEntity);
+    assert(profileEntity.axHealthValid && profileEntity.axDead);
     wzesp_reset();
 }
